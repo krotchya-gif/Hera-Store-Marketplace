@@ -1,0 +1,1070 @@
+"use client";
+
+import { useState, useEffect } from "react";
+import { Plus, Loader2, Upload } from "lucide-react";
+import {
+  STORE_NAME,
+  STORE_EMAIL,
+  STORE_PHONE,
+  STORE_DESCRIPTION,
+  STORE_ADDRESS
+} from "@/utils/storeConfig";
+
+const tabs = ["Informasi Toko", "Pengiriman", "Pembayaran", "Notifikasi", "Admin & Hak Akses", "SEO"];
+
+const couriers = ["JNE", "J&T Express", "SiCepat", "Gosend", "Anteraja"];
+const paymentMethods = ["Transfer Bank (BCA, Mandiri, BRI)", "GoPay", "OVO", "Dana", "ShopeePay", "Virtual Account", "COD (Bayar di Tempat)"];
+const notifEvents = [
+  "Pesanan baru masuk",
+  "Pembayaran diterima",
+  "Stok produk menipis (< 10 item)",
+  "Ulasan baru masuk",
+  "Pertanyaan Q&A baru",
+];
+const roles = ["Admin", "Operator", "Finance (readonly)"];
+const operationalDays = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"];
+
+interface AdminProfile {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  created_at: string;
+}
+
+export default function SettingsPage() {
+  const [activeTab, setActiveTab] = useState("Informasi Toko");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // --- States for Store Info ---
+  const [storeName, setStoreName] = useState(STORE_NAME);
+  const [storeEmail, setStoreEmail] = useState(STORE_EMAIL);
+  const [storePhone, setStorePhone] = useState(STORE_PHONE);
+  const [storeCity, setStoreCity] = useState("Jakarta Selatan");
+  const [storeDescription, setStoreDescription] = useState(STORE_DESCRIPTION);
+  const [storeAddress, setStoreAddress] = useState(STORE_ADDRESS);
+  const [storeTimeStart, setStoreTimeStart] = useState("08:00");
+  const [storeTimeEnd, setStoreTimeEnd] = useState("21:00");
+  const [activeDays, setActiveDays] = useState<Record<string, boolean>>(
+    Object.fromEntries(operationalDays.map((d, i) => [d, i < 5]))
+  );
+  const [igUrl, setIgUrl] = useState("");
+  const [ttUrl, setTtUrl] = useState("");
+  const [fbUrl, setFbUrl] = useState("");
+
+  // --- States for Shipping ---
+  const [courierToggles, setCourierToggles] = useState<Record<string, boolean>>(
+    Object.fromEntries(couriers.map((c, i) => [c, i < 3]))
+  );
+  const [freeShipping, setFreeShipping] = useState(true);
+  const [freeShippingMin, setFreeShippingMin] = useState(100000);
+  const [originCity, setOriginCity] = useState("Jakarta Selatan");
+
+  // --- States for Payment ---
+  const [paymentToggles, setPaymentToggles] = useState<Record<string, boolean>>(
+    Object.fromEntries(paymentMethods.map((p) => [p, true]))
+  );
+  const [bankName, setBankName] = useState("BCA");
+  const [bankOwner, setBankOwner] = useState("PT Hera Store");
+  const [bankNumber, setBankNumber] = useState("1234567890");
+  const [paymentTimeout, setPaymentTimeout] = useState(24);
+
+  // --- States for Notifications ---
+  const [notifEmail, setNotifEmail] = useState<Record<string, boolean>>(
+    Object.fromEntries(notifEvents.map((n) => [n, true]))
+  );
+  const [notifWA, setNotifWA] = useState<Record<string, boolean>>(
+    Object.fromEntries(notifEvents.map((n, i) => [n, i < 2]))
+  );
+
+  // --- States for Admins ---
+  const [admins, setAdmins] = useState<AdminProfile[]>([]);
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState("Admin");
+
+  // --- States for SEO ---
+  const [seoMetaPixelId, setSeoMetaPixelId] = useState("");
+  const [seoGa4Id, setSeoGa4Id] = useState("");
+  const [seoDefaultTitle, setSeoDefaultTitle] = useState("");
+  const [seoDefaultDescription, setSeoDefaultDescription] = useState("");
+  const [seoDefaultKeywords, setSeoDefaultKeywords] = useState("");
+  const [seoRobotsTxt, setSeoRobotsTxt] = useState("");
+  const [seoSitemapXml, setSeoSitemapXml] = useState("");
+  const [seoRobotsFile, setSeoRobotsFile] = useState<string | null>(null);
+  const [seoSitemapFile, setSeoSitemapFile] = useState<string | null>(null);
+
+  const fetchSettings = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const res = await fetch("/api/admin/settings");
+      if (!res.ok) throw new Error("Gagal mengambil data pengaturan");
+      const json = await res.json();
+      const settings = json.settings;
+      setAdmins(json.admins || []);
+
+      // Load store_info settings
+      if (settings.store_info) {
+        setStoreName(settings.store_info.name || STORE_NAME);
+        setStoreEmail(settings.store_info.email || STORE_EMAIL);
+        setStorePhone(settings.store_info.phone || STORE_PHONE);
+        setStoreCity(settings.store_info.city || "Jakarta Selatan");
+        setStoreDescription(settings.store_info.description || STORE_DESCRIPTION);
+        setStoreAddress(settings.store_info.address || STORE_ADDRESS);
+        if (settings.store_info.operational_hours) {
+          setStoreTimeStart(settings.store_info.operational_hours.start || "08:00");
+          setStoreTimeEnd(settings.store_info.operational_hours.end || "21:00");
+          const daysMap: Record<string, boolean> = {};
+          operationalDays.forEach(d => {
+            daysMap[d] = settings.store_info.operational_hours.days?.includes(d) || false;
+          });
+          setActiveDays(daysMap);
+        }
+        if (settings.store_info.social_media) {
+          setIgUrl(settings.store_info.social_media.instagram || "");
+          setTtUrl(settings.store_info.social_media.tiktok || "");
+          setFbUrl(settings.store_info.social_media.facebook || "");
+        }
+      }
+
+      // Load shipping settings
+      if (settings.shipping) {
+        setFreeShipping(settings.shipping.free_shipping ?? true);
+        setFreeShippingMin(settings.shipping.free_shipping_min ?? 100000);
+        setOriginCity(settings.shipping.origin_city || "Jakarta Selatan");
+        const courierMap: Record<string, boolean> = {};
+        couriers.forEach(c => {
+          courierMap[c] = settings.shipping.couriers?.includes(c) || false;
+        });
+        setCourierToggles(courierMap);
+      }
+
+      // Load payment settings
+      if (settings.payment) {
+        setPaymentTimeout(settings.payment.payment_timeout_hours ?? 24);
+        if (settings.payment.bank_account) {
+          setBankName(settings.payment.bank_account.bank || "BCA");
+          setBankOwner(settings.payment.bank_account.owner || "");
+          setBankNumber(settings.payment.bank_account.number || "");
+        }
+        const payMap: Record<string, boolean> = {};
+        paymentMethods.forEach(p => {
+          // Check if DB stored methods matches (since paymentMethods list uses longer descriptions)
+          payMap[p] = settings.payment.methods?.some((m: string) => p.toLowerCase().includes(m.toLowerCase())) || false;
+        });
+        setPaymentToggles(payMap);
+      }
+
+      // Load notification settings
+      if (settings.notifications) {
+        if (settings.notifications.email) setNotifEmail(settings.notifications.email);
+        if (settings.notifications.wa) setNotifWA(settings.notifications.wa);
+      }
+
+      // Load SEO settings
+      if (settings.seo) {
+        setSeoMetaPixelId(settings.seo.meta_pixel_id || "");
+        setSeoGa4Id(settings.seo.ga4_measurement_id || "");
+        setSeoDefaultTitle(settings.seo.default_title || "");
+        setSeoDefaultDescription(settings.seo.default_description || "");
+        setSeoDefaultKeywords(settings.seo.default_keywords || "");
+        setSeoRobotsTxt(settings.seo.robots_txt_content || "");
+        setSeoSitemapXml(settings.seo.sitemap_xml_content || "");
+      }
+    } catch (err: any) {
+      console.error("[fetchSettings]", err);
+      setError(err.message || "Gagal memuat data pengaturan");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchSettings();
+  }, []);
+
+  const saveStoreInfo = async () => {
+    try {
+      setSaving(true);
+      const res = await fetch("/api/admin/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          key: "store_info",
+          value: {
+            name: storeName,
+            email: storeEmail,
+            phone: storePhone,
+            city: storeCity,
+            description: storeDescription,
+            address: storeAddress,
+            operational_hours: {
+              start: storeTimeStart,
+              end: storeTimeEnd,
+              days: Object.keys(activeDays).filter(d => activeDays[d])
+            },
+            social_media: {
+              instagram: igUrl,
+              tiktok: ttUrl,
+              facebook: fbUrl
+            }
+          }
+        })
+      });
+      if (!res.ok) {
+        const errorJson = await res.json();
+        throw new Error(errorJson.error || "Gagal menyimpan informasi toko");
+      }
+      alert("Informasi toko berhasil disimpan!");
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const saveShippingInfo = async () => {
+    try {
+      setSaving(true);
+      const res = await fetch("/api/admin/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          key: "shipping",
+          value: {
+            free_shipping: freeShipping,
+            free_shipping_min: Number(freeShippingMin),
+            couriers: Object.keys(courierToggles).filter(c => courierToggles[c]),
+            origin_city: originCity
+          }
+        })
+      });
+      if (!res.ok) {
+        const errorJson = await res.json();
+        throw new Error(errorJson.error || "Gagal menyimpan pengaturan pengiriman");
+      }
+      alert("Pengaturan pengiriman berhasil disimpan!");
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const savePaymentInfo = async () => {
+    try {
+      setSaving(true);
+      const res = await fetch("/api/admin/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          key: "payment",
+          value: {
+            methods: Object.keys(paymentToggles).filter(p => paymentToggles[p]),
+            payment_timeout_hours: Number(paymentTimeout),
+            bank_account: {
+              bank: bankName,
+              owner: bankOwner,
+              number: bankNumber
+            }
+          }
+        })
+      });
+      if (!res.ok) {
+        const errorJson = await res.json();
+        throw new Error(errorJson.error || "Gagal menyimpan pengaturan pembayaran");
+      }
+      alert("Pengaturan pembayaran berhasil disimpan!");
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const saveNotificationInfo = async () => {
+    try {
+      setSaving(true);
+      const res = await fetch("/api/admin/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          key: "notifications",
+          value: {
+            email: notifEmail,
+            wa: notifWA
+          }
+        })
+      });
+      if (!res.ok) {
+        const errorJson = await res.json();
+        throw new Error(errorJson.error || "Gagal menyimpan pengaturan notifikasi");
+      }
+      alert("Pengaturan notifikasi berhasil disimpan!");
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const inviteAdmin = async () => {
+    if (!inviteEmail) return alert("Email wajib diisi");
+    try {
+      setSaving(true);
+      const res = await fetch("/api/admin/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "update_admin_role",
+          email: inviteEmail,
+          role: inviteRole
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Gagal mengangkat admin");
+      alert("Admin berhasil diangkat!");
+      setShowInviteModal(false);
+      setInviteEmail("");
+      fetchSettings();
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const removeAdmin = async (adminId: string) => {
+    if (!confirm("Apakah Anda yakin ingin mencabut hak akses admin untuk pengguna ini?")) return;
+    try {
+      setSaving(true);
+      const res = await fetch("/api/admin/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "remove_admin",
+          id: adminId
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Gagal mencabut admin");
+      alert("Hak akses admin berhasil dicabut.");
+      fetchSettings();
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const saveSeoSettings = async () => {
+    try {
+      setSaving(true);
+      const res = await fetch("/api/admin/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          key: "seo",
+          value: {
+            meta_pixel_id: seoMetaPixelId,
+            ga4_measurement_id: seoGa4Id,
+            default_title: seoDefaultTitle,
+            default_description: seoDefaultDescription,
+            default_keywords: seoDefaultKeywords,
+            robots_txt_content: seoRobotsTxt,
+            sitemap_xml_content: seoSitemapXml,
+          }
+        })
+      });
+      if (!res.ok) {
+        const errorJson = await res.json();
+        throw new Error(errorJson.error || "Gagal menyimpan pengaturan SEO");
+      }
+      alert("Pengaturan SEO berhasil disimpan!");
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const getRoleLabel = (role: string) => {
+    switch (role) {
+      case "super_admin": return "Super Admin";
+      case "admin": return "Admin";
+      case "operator": return "Operator";
+      case "finance": return "Finance";
+      default: return role;
+    }
+  };
+
+  const Toggle = ({ active, onToggle }: { active: boolean; onToggle: () => void }) => (
+    <div onClick={onToggle} className={`w-10 h-5 rounded-full cursor-pointer relative transition-colors ${active ? "bg-green-500" : "bg-gray-200"}`}>
+      <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${active ? "translate-x-5" : "translate-x-0.5"}`} />
+    </div>
+  );
+
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[400px] space-y-4">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-green-600"></div>
+        <p className="text-sm font-medium text-gray-500 font-sans animate-pulse">Memuat pengaturan toko...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[400px] space-y-4">
+        <div className="text-red-500 text-3xl">⚠️</div>
+        <p className="text-sm font-medium text-red-600 font-sans">{error}</p>
+        <button onClick={fetchSettings} className="px-4 py-2 bg-green-600 text-white rounded-xl text-xs font-semibold hover:bg-green-700 transition-colors">
+          Coba Lagi
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-bold text-gray-900">Pengaturan Toko</h2>
+          <p className="text-sm text-gray-500 mt-0.5">Konfigurasi toko {storeName}</p>
+        </div>
+        {saving && (
+          <div className="flex items-center gap-1.5 text-xs text-green-600 font-semibold bg-green-50 border border-green-200 px-3 py-1.5 rounded-xl">
+            <Loader2 className="w-3.5 h-3.5 animate-spin" /> Menyimpan...
+          </div>
+        )}
+      </div>
+
+      {/* Tab Nav */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-1.5 flex gap-1 overflow-x-auto">
+        {tabs.map((tab) => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors ${activeTab === tab ? "bg-green-600 text-white shadow-sm" : "text-gray-500 hover:bg-gray-100"}`}
+          >
+            {tab}
+          </button>
+        ))}
+      </div>
+
+      {/* TAB 1: Informasi Toko */}
+      {activeTab === "Informasi Toko" && (
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1.5">Nama Toko</label>
+              <input 
+                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-green-400" 
+                value={storeName}
+                onChange={(e) => setStoreName(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1.5">Email Toko</label>
+              <input 
+                type="email" 
+                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-green-400" 
+                value={storeEmail}
+                onChange={(e) => setStoreEmail(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1.5">No. WhatsApp (Notifikasi Pesanan)</label>
+              <input 
+                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-green-400" 
+                value={storePhone}
+                onChange={(e) => setStorePhone(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1.5">Kota/Provinsi</label>
+              <select 
+                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-green-400 bg-white"
+                value={storeCity}
+                onChange={(e) => setStoreCity(e.target.value)}
+              >
+                <option>Jakarta Selatan</option>
+                <option>Jakarta Pusat</option>
+                <option>Bandung</option>
+                <option>Surabaya</option>
+              </select>
+            </div>
+            <div className="md:col-span-2">
+              <label className="block text-xs font-medium text-gray-600 mb-1.5">Deskripsi Toko</label>
+              <textarea 
+                rows={3} 
+                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-green-400 resize-none" 
+                value={storeDescription}
+                onChange={(e) => setStoreDescription(e.target.value)}
+              />
+            </div>
+            <div className="md:col-span-2">
+              <label className="block text-xs font-medium text-gray-600 mb-1.5">Alamat Gudang</label>
+              <textarea 
+                rows={2} 
+                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-green-400 resize-none" 
+                value={storeAddress}
+                onChange={(e) => setStoreAddress(e.target.value)}
+              />
+            </div>
+            {/* Jam Operasional */}
+            <div className="md:col-span-2">
+              <label className="block text-xs font-medium text-gray-600 mb-3">Jam Operasional</label>
+              <div className="flex items-center gap-3 mb-3">
+                <input 
+                  type="time" 
+                  value={storeTimeStart} 
+                  onChange={(e) => setStoreTimeStart(e.target.value)}
+                  className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-green-400" 
+                />
+                <span className="text-gray-400 text-sm">sampai</span>
+                <input 
+                  type="time" 
+                  value={storeTimeEnd} 
+                  onChange={(e) => setStoreTimeEnd(e.target.value)}
+                  className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-green-400" 
+                />
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {operationalDays.map((day) => (
+                  <button
+                    key={day}
+                    onClick={() => setActiveDays((prev) => ({ ...prev, [day]: !prev[day] }))}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-medium border transition-colors ${activeDays[day] ? "bg-green-600 text-white border-green-600" : "border-gray-200 text-gray-500 hover:bg-gray-50"}`}
+                  >
+                    {day}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {/* Social Media */}
+            <div className="md:col-span-2">
+              <label className="block text-xs font-medium text-gray-600 mb-3">Sosial Media</label>
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-gray-500 w-24">📸 Instagram</span>
+                  <input 
+                    className="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-green-400" 
+                    placeholder="URL profil..." 
+                    value={igUrl}
+                    onChange={(e) => setIgUrl(e.target.value)}
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-gray-500 w-24">🎵 TikTok</span>
+                  <input 
+                    className="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-green-400" 
+                    placeholder="URL profil..." 
+                    value={ttUrl}
+                    onChange={(e) => setTtUrl(e.target.value)}
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-gray-500 w-24">👤 Facebook</span>
+                  <input 
+                    className="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-green-400" 
+                    placeholder="URL profil..." 
+                    value={fbUrl}
+                    onChange={(e) => setFbUrl(e.target.value)}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="mt-6 flex justify-end">
+            <button 
+              onClick={saveStoreInfo}
+              disabled={saving}
+              className="bg-green-600 hover:bg-green-700 text-white font-semibold px-6 py-2.5 rounded-xl text-sm shadow-sm transition-colors disabled:opacity-50"
+            >
+              Simpan Perubahan
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 2: Pengiriman */}
+      {activeTab === "Pengiriman" && (
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 space-y-5">
+          <div>
+            <h3 className="font-semibold text-gray-800 mb-3 text-sm">Kurir Aktif</h3>
+            <div className="space-y-3">
+              {couriers.map((c) => (
+                <div key={c} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
+                  <span className="text-sm font-medium text-gray-700">🚚 {c}</span>
+                  <Toggle active={courierToggles[c]} onToggle={() => setCourierToggles((prev) => ({ ...prev, [c]: !prev[c] }))} />
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="border-t border-gray-100 pt-5">
+            <h3 className="font-semibold text-gray-800 mb-3 text-sm">Gratis Ongkir</h3>
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-sm text-gray-600">Aktifkan gratis ongkir</span>
+              <Toggle active={freeShipping} onToggle={() => setFreeShipping(!freeShipping)} />
+            </div>
+            {freeShipping && (
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1.5">Minimum Belanja</label>
+                <div className="relative max-w-xs">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">Rp</span>
+                  <input 
+                    type="number" 
+                    className="w-full border border-gray-200 rounded-xl pl-9 pr-3 py-2.5 text-sm focus:outline-none focus:border-green-400" 
+                    value={freeShippingMin} 
+                    onChange={(e) => setFreeShippingMin(Number(e.target.value))}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+          <div className="border-t border-gray-100 pt-5">
+            <h3 className="font-semibold text-gray-800 mb-3 text-sm">Lokasi Asal Pengiriman</h3>
+            <select 
+              className="border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-green-400 bg-white"
+              value={originCity}
+              onChange={(e) => setOriginCity(e.target.value)}
+            >
+              <option>Jakarta Selatan</option>
+              <option>Jakarta Pusat</option>
+              <option>Bandung</option>
+              <option>Surabaya</option>
+            </select>
+          </div>
+          <div className="flex justify-end">
+            <button 
+              onClick={saveShippingInfo}
+              disabled={saving}
+              className="bg-green-600 hover:bg-green-700 text-white font-semibold px-6 py-2.5 rounded-xl text-sm transition-colors disabled:opacity-50"
+            >
+              Simpan
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 3: Pembayaran */}
+      {activeTab === "Pembayaran" && (
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 space-y-5">
+          <div>
+            <h3 className="font-semibold text-gray-800 mb-3 text-sm">Metode Pembayaran Aktif</h3>
+            <div className="space-y-3">
+              {paymentMethods.map((pm) => (
+                <div key={pm} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
+                  <span className="text-sm font-medium text-gray-700">💳 {pm}</span>
+                  <Toggle active={paymentToggles[pm]} onToggle={() => setPaymentToggles((prev) => ({ ...prev, [pm]: !prev[pm] }))} />
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="border-t border-gray-100 pt-5">
+            <h3 className="font-semibold text-gray-800 mb-3 text-sm">Nomor Rekening Toko</h3>
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1.5">Bank</label>
+                <select 
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-green-400 bg-white"
+                  value={bankName}
+                  onChange={(e) => setBankName(e.target.value)}
+                >
+                  <option>BCA</option><option>Mandiri</option><option>BRI</option><option>BNI</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1.5">Nama Pemilik</label>
+                <input 
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-green-400" 
+                  value={bankOwner}
+                  onChange={(e) => setBankOwner(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1.5">Nomor Rekening</label>
+                <input 
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-green-400" 
+                  value={bankNumber}
+                  onChange={(e) => setBankNumber(e.target.value)}
+                />
+              </div>
+            </div>
+          </div>
+          <div className="border-t border-gray-100 pt-5">
+            <h3 className="font-semibold text-gray-800 mb-2 text-sm">Batas Waktu Pembayaran</h3>
+            <div className="flex items-center gap-3">
+              <input 
+                type="number" 
+                className="w-24 border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-green-400" 
+                value={paymentTimeout}
+                onChange={(e) => setPaymentTimeout(Number(e.target.value))}
+              />
+              <span className="text-sm text-gray-500">jam</span>
+            </div>
+          </div>
+          <div className="flex justify-end">
+            <button 
+              onClick={savePaymentInfo}
+              disabled={saving}
+              className="bg-green-600 hover:bg-green-700 text-white font-semibold px-6 py-2.5 rounded-xl text-sm transition-colors disabled:opacity-50"
+            >
+              Simpan
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 4: Notifikasi */}
+      {activeTab === "Notifikasi" && (
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr>
+                  <th className="text-left py-3 text-xs font-semibold text-gray-500">Event</th>
+                  <th className="text-center py-3 text-xs font-semibold text-gray-500 px-4">Email</th>
+                  <th className="text-center py-3 text-xs font-semibold text-gray-500 px-4">WhatsApp</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {notifEvents.map((event) => (
+                  <tr key={event} className="hover:bg-gray-50/50">
+                    <td className="py-3.5 pr-4">
+                      <p className="text-sm text-gray-700">🔔 {event}</p>
+                    </td>
+                    <td className="py-3.5 px-4 text-center">
+                      <div className="flex justify-center">
+                        <Toggle active={notifEmail[event]} onToggle={() => setNotifEmail((p) => ({ ...p, [event]: !p[event] }))} />
+                      </div>
+                    </td>
+                    <td className="py-3.5 px-4 text-center">
+                      <div className="flex justify-center">
+                        <Toggle active={notifWA[event]} onToggle={() => setNotifWA((p) => ({ ...p, [event]: !p[event] }))} />
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="mt-5 flex justify-end">
+            <button 
+              onClick={saveNotificationInfo}
+              disabled={saving}
+              className="bg-green-600 hover:bg-green-700 text-white font-semibold px-6 py-2.5 rounded-xl text-sm transition-colors disabled:opacity-50"
+            >
+              Simpan
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 5: Admin & Hak Akses */}
+      {activeTab === "Admin & Hak Akses" && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-semibold text-gray-700">{admins.length} Admin Terdaftar</p>
+            <button id="btn-invite-admin" onClick={() => setShowInviteModal(true)} className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white font-semibold px-4 py-2 rounded-xl text-sm transition-colors">
+              <Plus className="w-4 h-4" /> Undang Admin
+            </button>
+          </div>
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-100">
+                  <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500">Nama</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500">Email</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500">Role</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500">Tanggal Gabung</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500">Aksi</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {admins.map((admin) => (
+                  <tr key={admin.id} className="hover:bg-gray-50/50">
+                    <td className="px-5 py-3.5">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 bg-green-600 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0">
+                          {(admin.name || "A").charAt(0).toUpperCase()}
+                        </div>
+                        <span className="font-medium text-gray-900 text-xs">{admin.name || "Administrator"}</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3.5 text-xs text-gray-500">{admin.email}</td>
+                    <td className="px-4 py-3.5">
+                      <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${admin.role === "super_admin" ? "bg-purple-50 text-purple-700" : admin.role === "admin" ? "bg-blue-50 text-blue-700" : "bg-gray-100 text-gray-600"}`}>
+                        {getRoleLabel(admin.role)}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3.5 text-xs text-gray-400">
+                      {new Date(admin.created_at).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}
+                    </td>
+                    <td className="px-4 py-3.5">
+                      {admin.role !== "super_admin" && (
+                        <button 
+                          onClick={() => removeAdmin(admin.id)}
+                          disabled={saving}
+                          className="text-red-400 text-xs font-semibold hover:text-red-600 hover:underline disabled:opacity-50"
+                        >
+                          Hapus
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {showInviteModal && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+              <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowInviteModal(false)} />
+              <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+                <h3 className="font-semibold text-gray-900 mb-4">Undang Admin Baru</h3>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1.5">Email Pelanggan Terdaftar *</label>
+                    <input 
+                      type="email" 
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-green-400" 
+                      placeholder="admin@email.com" 
+                      value={inviteEmail}
+                      onChange={(e) => setInviteEmail(e.target.value)}
+                    />
+                    <p className="text-[10px] text-gray-400 mt-1">Sistem akan menaikkan level akun user terdaftar dengan email ini menjadi Admin.</p>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1.5">Role *</label>
+                    <select 
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-green-400 bg-white"
+                      value={inviteRole}
+                      onChange={(e) => setInviteRole(e.target.value)}
+                    >
+                      {roles.map((r) => <option key={r}>{r}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <div className="flex gap-3 mt-5">
+                  <button onClick={() => setShowInviteModal(false)} className="flex-1 border border-gray-200 text-gray-600 font-semibold py-2.5 rounded-xl text-sm hover:bg-gray-50">Batal</button>
+                  <button 
+                    onClick={inviteAdmin}
+                    disabled={saving}
+                    className="flex-1 bg-green-600 hover:bg-green-700 text-white font-semibold py-2.5 rounded-xl text-sm disabled:opacity-50 transition-colors"
+                  >
+                    Kirim Undangan
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* TAB 6: SEO */}
+      {activeTab === "SEO" && (
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+          <h3 className="font-semibold text-gray-800 mb-4 text-sm">Tracking & Analytics</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-6">
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1.5">Meta Pixel ID</label>
+              <input
+                value={seoMetaPixelId}
+                onChange={(e) => setSeoMetaPixelId(e.target.value)}
+                type="text"
+                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-green-400"
+                placeholder="1234567890"
+              />
+              <p className="text-[10px] text-gray-400 mt-1">ID dari Facebook Events Manager</p>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1.5">GA4 Measurement ID</label>
+              <input
+                value={seoGa4Id}
+                onChange={(e) => setSeoGa4Id(e.target.value)}
+                type="text"
+                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-green-400"
+                placeholder="G-XXXXXXXXXX"
+              />
+              <p className="text-[10px] text-gray-400 mt-1">ID dari Google Analytics 4</p>
+            </div>
+          </div>
+
+          <div className="border-t border-gray-100 pt-5 mb-6">
+            <h3 className="font-semibold text-gray-800 mb-4 text-sm">Meta Tags Default</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1.5">Default Title</label>
+                <input
+                  value={seoDefaultTitle}
+                  onChange={(e) => setSeoDefaultTitle(e.target.value)}
+                  type="text"
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-green-400"
+                  placeholder="Hera Store — Marketplace Produk Rumah Tangga"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1.5">Default Description</label>
+                <textarea
+                  value={seoDefaultDescription}
+                  onChange={(e) => setSeoDefaultDescription(e.target.value)}
+                  rows={3}
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-green-400 resize-none"
+                  placeholder="Deskripsi default untuk halaman marketplace"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1.5">Default Keywords</label>
+                <input
+                  value={seoDefaultKeywords}
+                  onChange={(e) => setSeoDefaultKeywords(e.target.value)}
+                  type="text"
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-green-400"
+                  placeholder="hera store, marketplace, produk rumah tangga, belanja online"
+                />
+                <p className="text-[10px] text-gray-400 mt-1">Pisahkan dengan koma</p>
+              </div>
+            </div>
+          </div>
+
+          {/* File Upload Section */}
+          <div className="border-t border-gray-100 pt-5 mb-6 space-y-6">
+            {/* Robots.txt Upload */}
+            <div>
+              <div className="flex items-start justify-between mb-3">
+                <div>
+                  <h3 className="font-semibold text-gray-800 text-sm">Upload robots.txt</h3>
+                  <p className="text-[10px] text-gray-400 mt-0.5">
+                    Upload file robots.txt atau edit manual di bawah. Kosongkan untuk menggunakan default.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 mb-3">
+                <label className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-xl text-sm font-medium text-gray-600 hover:border-green-400 hover:text-green-600 cursor-pointer transition-colors">
+                  <Upload className="w-4 h-4" />
+                  Pilih File .txt
+                  <input
+                    type="file"
+                    accept=".txt"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      const reader = new FileReader();
+                      reader.onload = (ev) => {
+                        const content = ev.target?.result as string;
+                        setSeoRobotsTxt(content);
+                        setSeoRobotsFile(file.name);
+                      };
+                      reader.readAsText(file);
+                    }}
+                  />
+                </label>
+                {seoRobotsFile && (
+                  <span className="text-xs text-green-600 font-medium">{seoRobotsFile} ✓</span>
+                )}
+                {(seoRobotsTxt || seoRobotsFile) && (
+                  <button
+                    onClick={() => { setSeoRobotsTxt(""); setSeoRobotsFile(null); }}
+                    className="text-xs text-red-500 hover:text-red-600 font-medium"
+                  >
+                    Hapus
+                  </button>
+                )}
+              </div>
+              <textarea
+                value={seoRobotsTxt}
+                onChange={(e) => setSeoRobotsTxt(e.target.value)}
+                rows={6}
+                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-mono focus:outline-none focus:border-green-400 resize-none"
+                placeholder={`User-agent: *
+Allow: /
+
+Sitemap: ${typeof window !== "undefined" ? window.location.origin : "https://herastore.com"}/sitemap.xml`}
+              />
+            </div>
+
+            {/* Sitemap.xml Upload */}
+            <div>
+              <div className="flex items-start justify-between mb-3">
+                <div>
+                  <h3 className="font-semibold text-gray-800 text-sm">Upload sitemap.xml</h3>
+                  <p className="text-[10px] text-gray-400 mt-0.5">
+                    Upload file sitemap.xml kustom atau biarkan kosong untuk menggunakan sitemap otomatis dari database.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 mb-3">
+                <label className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-xl text-sm font-medium text-gray-600 hover:border-green-400 hover:text-green-600 cursor-pointer transition-colors">
+                  <Upload className="w-4 h-4" />
+                  Pilih File .xml
+                  <input
+                    type="file"
+                    accept=".xml"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      const reader = new FileReader();
+                      reader.onload = (ev) => {
+                        const content = ev.target?.result as string;
+                        setSeoSitemapXml(content);
+                        setSeoSitemapFile(file.name);
+                      };
+                      reader.readAsText(file);
+                    }}
+                  />
+                </label>
+                {seoSitemapFile && (
+                  <span className="text-xs text-green-600 font-medium">{seoSitemapFile} ✓</span>
+                )}
+                {(seoSitemapXml || seoSitemapFile) && (
+                  <button
+                    onClick={() => { setSeoSitemapXml(""); setSeoSitemapFile(null); }}
+                    className="text-xs text-red-500 hover:text-red-600 font-medium"
+                  >
+                    Hapus
+                  </button>
+                )}
+              </div>
+              <textarea
+                value={seoSitemapXml}
+                onChange={(e) => setSeoSitemapXml(e.target.value)}
+                rows={6}
+                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-mono focus:outline-none focus:border-green-400 resize-none"
+                placeholder={`<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>${typeof window !== "undefined" ? window.location.origin : "https://herastore.com"}/</loc>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+  </url>
+</urlset>`}
+              />
+              {!seoSitemapXml && (
+                <p className="text-[10px] text-green-600 mt-1">
+                  ✓ Sitemap otomatis aktif (generasi dinamis dari database)
+                </p>
+              )}
+            </div>
+          </div>
+
+          <div className="flex justify-end border-t border-gray-100 pt-5">
+            <button
+              onClick={saveSeoSettings}
+              disabled={saving}
+              className="bg-green-600 hover:bg-green-700 text-white font-semibold px-6 py-2.5 rounded-xl text-sm shadow-sm transition-colors disabled:opacity-50"
+            >
+              Simpan Pengaturan SEO
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

@@ -1,0 +1,554 @@
+"use client";
+
+import { useState, useEffect } from "react";
+import Link from "next/link";
+import Navbar from "@/components/Navbar";
+import Footer from "@/components/Footer";
+import { getProductEmoji } from "@/components/HomeClient";
+import { createClient } from "@/utils/supabase/client";
+import {
+  ChevronRight,
+  Star,
+  Heart,
+  ShoppingCart,
+  Truck,
+  Shield,
+  Minus,
+  Plus,
+  Share2,
+  Store,
+  Package,
+} from "lucide-react";
+import type { Product, Review } from "@/types/database";
+
+const formatRp = (n: number) => `Rp ${n.toLocaleString("id-ID")}`;
+
+interface ProductDetailClientProps {
+  product: Product;
+  reviews: Review[];
+  ratingSummary: {
+    average: number;
+    count: number;
+    breakdown: Record<number, number>;
+  };
+  relatedProducts: Product[];
+}
+
+export default function ProductDetailClient({
+  product,
+  reviews,
+  ratingSummary,
+  relatedProducts,
+}: ProductDetailClientProps) {
+  const [activeTab, setActiveTab] = useState<"deskripsi" | "spesifikasi" | "ulasan">("deskripsi");
+  const [quantity, setQuantity] = useState(1);
+  
+  // Resolve variants
+  const hasVariants = product.product_variants && product.product_variants.length > 0;
+  const [selectedVariantId, setSelectedVariantId] = useState<string | null>(
+    hasVariants ? product.product_variants![0].id : null
+  );
+
+  const currentVariant = hasVariants
+    ? product.product_variants!.find((v) => v.id === selectedVariantId)
+    : null;
+
+  const [wished, setWished] = useState(false);
+  const [addedToCart, setAddedToCart] = useState(false);
+  const [activeImage, setActiveImage] = useState(0);
+
+  useEffect(() => {
+    try {
+      const wishStr = localStorage.getItem("hera_wishlist");
+      if (wishStr) {
+        const wish = JSON.parse(wishStr);
+        if (Array.isArray(wish) && wish.includes(product.id)) {
+          setWished(true);
+        }
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }, [product.id]);
+
+  // Images resolution
+  const imageList = product.product_images && product.product_images.length > 0
+    ? product.product_images.map((img) => img.url)
+    : [getProductEmoji(product.slug, product.categories?.icon), "📸", "🖼️", "🎁"];
+
+  const maxStock = currentVariant ? currentVariant.stock : product.stock;
+  const displayPrice = currentVariant ? currentVariant.price : (product.discount_price ?? product.price);
+  const displayOriginalPrice = currentVariant ? null : (product.discount_price ? product.price : null);
+  const hasDiscount = !currentVariant && !!product.discount_price && product.discount_price < product.price;
+  const discountPercent = hasDiscount ? Math.round(((product.price - product.discount_price!) / product.price) * 100) : 0;
+
+  // Construct specs table
+  const specifications = [
+    { label: "SKU", value: product.sku || "-" },
+    { label: "Merek / Brand", value: product.brand || "Hera Store" },
+    { label: "Satuan", value: product.unit || "pcs" },
+    { label: "Berat Bersih", value: product.weight_gram ? `${product.weight_gram} g` : "-" },
+    {
+      label: "Dimensi (P x L x T)",
+      value: product.dimension_p
+        ? `${product.dimension_p} x ${product.dimension_l} x ${product.dimension_t} cm`
+        : "-",
+    },
+  ];
+
+  const handleAddToCart = async () => {
+    try {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        alert("Silakan masuk (login) terlebih dahulu untuk berbelanja.");
+        window.location.href = "/profil";
+        return;
+      }
+
+      const cartStr = localStorage.getItem("hera_cart");
+      let cart = cartStr ? JSON.parse(cartStr) : [];
+      if (!Array.isArray(cart)) cart = [];
+
+      const variantName = currentVariant ? currentVariant.name : null;
+      const variantId = currentVariant ? currentVariant.id : null;
+
+      const existingIndex = cart.findIndex(
+        (item: any) => item.id === product.id && item.variant === variantName
+      );
+
+      const itemPrice = currentVariant ? currentVariant.price : (product.discount_price ?? product.price);
+      const originalPrice = currentVariant ? null : (product.discount_price ? product.price : null);
+
+      if (existingIndex > -1) {
+        cart[existingIndex].quantity = Math.min(
+          maxStock,
+          cart[existingIndex].quantity + quantity
+        );
+      } else {
+        cart.push({
+          id: product.id,
+          name: product.name,
+          price: itemPrice,
+          originalPrice: originalPrice,
+          quantity: quantity,
+          emoji: imageList[0].startsWith("http") ? "🧴" : imageList[0],
+          variant: variantName,
+          variantId: variantId,
+          stock: maxStock,
+          slug: product.slug,
+        });
+      }
+
+      localStorage.setItem("hera_cart", JSON.stringify(cart));
+      window.dispatchEvent(new Event("cart-updated"));
+      setAddedToCart(true);
+      setTimeout(() => setAddedToCart(false), 2000);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <Navbar />
+
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 md:py-6">
+        {/* Breadcrumb */}
+        <nav className="flex items-center gap-2 text-sm text-gray-500 mb-4 flex-wrap">
+          <Link href="/" className="hover:text-green-600">Beranda</Link>
+          <ChevronRight className="w-4 h-4" />
+          {product.categories && (
+            <>
+              <Link href={`/kategori/${product.categories.slug}`} className="hover:text-green-600">
+                {product.categories.name}
+              </Link>
+              <ChevronRight className="w-4 h-4" />
+            </>
+          )}
+          <span className="text-gray-900 font-medium line-clamp-1">{product.name}</span>
+        </nav>
+
+        {/* Main Product Area */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-10 mb-8">
+          {/* Left: Gallery */}
+          <div>
+            <div className="bg-white rounded-2xl border border-gray-100 aspect-square flex items-center justify-center mb-3 relative overflow-hidden shadow-sm">
+              {imageList[activeImage].startsWith("http") ? (
+                <img src={imageList[activeImage]} alt={product.name} className="max-w-full max-h-full object-contain" />
+              ) : (
+                <span className="text-8xl md:text-9xl">{imageList[activeImage]}</span>
+              )}
+              {hasDiscount && (
+                <span className="absolute top-4 left-4 bg-red-500 text-white text-sm font-bold px-3 py-1 rounded-full">
+                  -{discountPercent}%
+                </span>
+              )}
+              <button
+                onClick={async () => {
+                  try {
+                    const supabase = createClient();
+                    const { data: { user } } = await supabase.auth.getUser();
+                    if (!user) {
+                      alert("Silakan masuk (login) terlebih dahulu untuk menambahkan wishlist.");
+                      window.location.href = "/profil";
+                      return;
+                    }
+
+                    const wishStr = localStorage.getItem("hera_wishlist");
+                    let wish = wishStr ? JSON.parse(wishStr) : [];
+                    if (!Array.isArray(wish)) wish = [];
+
+                    const nextWished = !wished;
+                    setWished(nextWished);
+
+                    if (nextWished) {
+                      if (!wish.includes(product.id)) wish.push(product.id);
+                    } else {
+                      wish = wish.filter((id: string) => id !== product.id);
+                    }
+                    localStorage.setItem("hera_wishlist", JSON.stringify(wish));
+                    window.dispatchEvent(new Event("wishlist-updated"));
+                  } catch (e) {
+                    console.error(e);
+                  }
+                }}
+                className={`absolute top-4 right-4 w-10 h-10 rounded-full flex items-center justify-center shadow-md transition-all ${
+                  wished ? "bg-red-500 text-white" : "bg-white text-gray-400 hover:text-red-500"
+                }`}
+              >
+                <Heart className={`w-5 h-5 ${wished ? "fill-current" : ""}`} />
+              </button>
+            </div>
+
+            {/* Thumbnails */}
+            <div className="flex gap-2">
+              {imageList.map((img, i) => (
+                <button
+                  key={i}
+                  onClick={() => setActiveImage(i)}
+                  className={`w-16 h-16 rounded-xl border-2 flex items-center justify-center text-2xl bg-white overflow-hidden transition-all ${
+                    activeImage === i ? "border-green-500 shadow-sm" : "border-gray-200 hover:border-green-300"
+                  }`}
+                >
+                  {img.startsWith("http") ? (
+                    <img src={img} alt="" className="w-full h-full object-cover" />
+                  ) : (
+                    img
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Right: Product Info */}
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-6 h-6 bg-green-600 rounded-lg flex items-center justify-center">
+                <Store className="w-3.5 h-3.5 text-white" />
+              </div>
+              <span className="text-sm text-green-700 font-medium">Hera Store Official</span>
+              <span className="text-xs text-gray-400">• Jakarta Selatan</span>
+            </div>
+
+            <h1 className="text-xl md:text-2xl font-bold text-gray-900 mb-3 leading-snug">
+              {product.name}
+            </h1>
+
+            {/* Rating & reviews */}
+            <div className="flex items-center gap-3 mb-4">
+              <div className="flex items-center gap-1">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <Star
+                    key={i}
+                    className={`w-4 h-4 ${
+                      i < Math.floor(ratingSummary.average || 4.8)
+                        ? "text-yellow-400 fill-current"
+                        : "text-gray-300"
+                    }`}
+                  />
+                ))}
+                <span className="ml-1 font-semibold text-gray-900">{ratingSummary.average || 4.8}</span>
+              </div>
+              <span className="text-sm text-gray-500">
+                ({ratingSummary.count} ulasan)
+              </span>
+              <span className="text-sm text-gray-500">10+ terjual</span>
+            </div>
+
+            {/* Price */}
+            <div className="bg-green-50 rounded-xl p-4 mb-4">
+              <div className="flex items-baseline gap-3">
+                <span className="text-3xl font-bold text-green-700">
+                  {formatRp(displayPrice)}
+                </span>
+                {displayOriginalPrice && (
+                  <span className="text-lg text-gray-400 line-through">
+                    {formatRp(displayOriginalPrice)}
+                  </span>
+                )}
+                {hasDiscount && (
+                  <span className="bg-red-500 text-white text-sm font-bold px-2 py-0.5 rounded-lg">
+                    Hemat {discountPercent}%
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-green-600 mt-1">✓ Harga sudah termasuk PPN</p>
+            </div>
+
+            {/* Variants */}
+            {hasVariants && (
+              <div className="mb-4">
+                <p className="text-sm font-semibold text-gray-700 mb-2">
+                  Pilih Varian:{" "}
+                  <span className="text-green-700">{currentVariant?.name}</span>
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {product.product_variants!.map((opt) => (
+                    <button
+                      key={opt.id}
+                      onClick={() => { setSelectedVariantId(opt.id); setQuantity(1); }}
+                      className={`px-4 py-2 rounded-xl text-sm font-medium border-2 transition-all ${
+                        selectedVariantId === opt.id
+                          ? "border-green-500 bg-green-50 text-green-700"
+                          : "border-gray-200 text-gray-600 hover:border-green-300"
+                      }`}
+                    >
+                      {opt.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Quantity */}
+            <div className="flex items-center gap-4 mb-4">
+              <p className="text-sm font-semibold text-gray-700">Jumlah:</p>
+              <div className="flex items-center gap-0 border border-gray-200 rounded-xl overflow-hidden">
+                <button
+                  onClick={() => setQuantity(Math.max(1, quantity - 1))}
+                  className="w-10 h-10 flex items-center justify-center text-gray-600 hover:bg-gray-100 transition-colors"
+                >
+                  <Minus className="w-4 h-4" />
+                </button>
+                <span className="w-12 h-10 flex items-center justify-center font-semibold text-gray-900 text-sm border-x border-gray-200">
+                  {quantity}
+                </span>
+                <button
+                  onClick={() => setQuantity(Math.min(maxStock, quantity + 1))}
+                  className="w-10 h-10 flex items-center justify-center text-gray-600 hover:bg-gray-100 transition-colors"
+                >
+                  <Plus className="w-4 h-4" />
+                </button>
+              </div>
+              <span className="text-sm text-gray-400">Stok: {maxStock} pcs</span>
+            </div>
+
+            {/* CTA buttons */}
+            <div className="flex gap-3 mb-6">
+              <button
+                onClick={handleAddToCart}
+                className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-semibold text-sm border-2 transition-all ${
+                  addedToCart
+                    ? "border-green-500 bg-green-50 text-green-700"
+                    : "border-green-500 text-green-700 hover:bg-green-50"
+                }`}
+              >
+                <ShoppingCart className="w-4 h-4" />
+                {addedToCart ? "✓ Ditambahkan!" : "+ Keranjang"}
+              </button>
+              <Link
+                href="/checkout"
+                className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-semibold text-sm bg-green-600 text-white hover:bg-green-700 transition-colors"
+              >
+                Beli Sekarang
+              </Link>
+            </div>
+
+            <button className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-700 mb-6">
+              <Share2 className="w-4 h-4" /> Bagikan Produk
+            </button>
+
+            {/* Shipping info */}
+            <div className="space-y-3 border-t border-gray-100 pt-4">
+              <div className="flex items-start gap-3">
+                <Truck className="w-4 h-4 text-green-600 mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-sm font-medium text-gray-800">Pengiriman ke Jakarta</p>
+                  <p className="text-xs text-gray-500">Estimasi tiba 2-5 hari kerja · Gratis Ongkir min. Rp 50.000</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3">
+                <Shield className="w-4 h-4 text-green-600 mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-sm font-medium text-gray-800">Garansi Produk Original</p>
+                  <p className="text-xs text-gray-500">Uang kembali jika produk tidak sesuai</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3">
+                <Package className="w-4 h-4 text-green-600 mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-sm font-medium text-gray-800">Berat: {product.weight_gram || 500}g</p>
+                  <p className="text-xs text-gray-500">Dikemas dengan aman & rapi</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Tabs */}
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm mb-8">
+          <div className="flex border-b border-gray-100">
+            {(["deskripsi", "spesifikasi", "ulasan"] as const).map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={`px-6 py-4 text-sm font-semibold capitalize transition-colors border-b-2 ${
+                  activeTab === tab
+                    ? "text-green-700 border-green-600"
+                    : "text-gray-500 border-transparent hover:text-gray-700"
+                }`}
+              >
+                {tab === "ulasan"
+                  ? `Ulasan (${ratingSummary.count})`
+                  : tab.charAt(0).toUpperCase() + tab.slice(1)}
+              </button>
+            ))}
+          </div>
+
+          <div className="p-6">
+            {activeTab === "deskripsi" && (
+              <div className="prose prose-sm max-w-none text-gray-700 leading-relaxed">
+                <p>{product.description || "Tidak ada deskripsi produk."}</p>
+                <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-4">
+                  {[
+                    { icon: "✅", label: "100% Original" },
+                    { icon: "🏭", label: "Produk Indonesia" },
+                    { icon: "🔬", label: "Dermatologi Tested" },
+                    { icon: "🌿", label: "Bahan Alami" },
+                  ].map((item) => (
+                    <div key={item.label} className="flex items-center gap-2 bg-green-50 rounded-xl p-3">
+                      <span className="text-xl">{item.icon}</span>
+                      <span className="text-xs font-medium text-gray-700">{item.label}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {activeTab === "spesifikasi" && (
+              <div className="space-y-0">
+                {specifications.map((spec, i) => (
+                  <div
+                    key={spec.label}
+                    className={`flex items-start py-3 gap-4 ${
+                      i < specifications.length - 1 ? "border-b border-gray-100" : ""
+                    }`}
+                  >
+                    <span className="w-36 shrink-0 text-sm text-gray-500">{spec.label}</span>
+                    <span className="text-sm font-medium text-gray-900">{spec.value}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {activeTab === "ulasan" && (
+              <div className="space-y-6">
+                <div className="flex gap-8 items-center">
+                  <div className="text-center shrink-0">
+                    <p className="text-5xl font-bold text-gray-900">{ratingSummary.average || 4.8}</p>
+                    <div className="flex items-center justify-center gap-0.5 mt-1">
+                      {Array.from({ length: 5 }).map((_, i) => (
+                        <Star key={i} className={`w-4 h-4 ${i < Math.floor(ratingSummary.average || 4.8) ? "text-yellow-400 fill-current" : "text-gray-300"}`} />
+                      ))}
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1">{ratingSummary.count} ulasan</p>
+                  </div>
+                  <div className="flex-1 space-y-2">
+                    {[5, 4, 3, 2, 1].map((stars) => {
+                      const count = ratingSummary.breakdown[stars] ?? 0;
+                      const pct = ratingSummary.count > 0 ? (count / ratingSummary.count) * 100 : 0;
+                      return (
+                        <div key={stars} className="flex items-center gap-2">
+                          <span className="text-xs text-gray-500 w-6 text-right">{stars}★</span>
+                          <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-yellow-400 rounded-full"
+                              style={{ width: `${pct}%` }}
+                            />
+                          </div>
+                          <span className="text-xs text-gray-400 w-8">{count}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  {reviews.length === 0 ? (
+                    <p className="text-sm text-gray-400 text-center py-6">Belum ada ulasan untuk produk ini.</p>
+                  ) : (
+                    reviews.map((review) => (
+                      <div key={review.id} className="border border-gray-100 rounded-xl p-4">
+                        <div className="flex items-start justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center font-bold text-xs text-green-700">
+                              {(review.profiles?.name || "User").charAt(0)}
+                            </div>
+                            <div>
+                              <p className="text-sm font-semibold text-gray-800">{review.profiles?.name || "Pelanggan Hera"}</p>
+                              <p className="text-xs text-gray-400">{new Date(review.created_at).toLocaleDateString("id-ID")}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-0.5">
+                            {Array.from({ length: review.rating }).map((_, i) => (
+                              <Star key={i} className="w-3 h-3 text-yellow-400 fill-current" />
+                            ))}
+                          </div>
+                        </div>
+                        <p className="text-sm text-gray-700 mb-3">{review.comment}</p>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Related Products */}
+        {relatedProducts.length > 0 && (
+          <div>
+            <h2 className="text-lg font-bold text-gray-900 mb-4">Produk Serupa</h2>
+            <div className="flex gap-4 overflow-x-auto pb-3 snap-x snap-mandatory">
+              {relatedProducts.map((p) => {
+                const pEmoji = getProductEmoji(p.slug, p.categories?.icon);
+                return (
+                  <div key={p.id} className="min-w-[160px] md:min-w-[200px] snap-start">
+                    <Link href={`/produk/${p.slug}`}>
+                      <div className="bg-white rounded-xl border border-gray-100 overflow-hidden hover:shadow-md hover:-translate-y-0.5 transition-all">
+                        <div className="aspect-square bg-green-50 flex items-center justify-center">
+                          <span className="text-4xl">{pEmoji}</span>
+                        </div>
+                        <div className="p-3">
+                          <p className="text-xs font-medium text-gray-900 line-clamp-2 mb-1">{p.name}</p>
+                          <div className="flex items-center gap-1 mb-1">
+                            <Star className="w-3 h-3 text-yellow-400 fill-current" />
+                            <span className="text-xs text-gray-500">4.8</span>
+                          </div>
+                          <p className="text-sm font-bold text-green-700">{formatRp(p.price)}</p>
+                        </div>
+                      </div>
+                    </Link>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <Footer />
+    </div>
+  );
+}

@@ -1,0 +1,46 @@
+# Next.js
+app/.next/
+app/out/
+app/build/
+
+# Dependencies
+app/node_modules/
+
+# Build artifacts
+*.tsbuildinfo
+next-env.d.ts
+
+# Environment files
+.env*
+!.env.example
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Vercel
+.vercel
+
+# Claude
+.claude/
+AGENTS.md
+app/AGENTS.md
+app/CLAUDE.md
+
+# Project docs (track only MIGRATE.md & README.md)
+Todo.md
+AGENT.MD.md
+
+# Supabase
+supabase/.temp/
