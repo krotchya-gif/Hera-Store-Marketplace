@@ -8,7 +8,7 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get("search") || undefined;
     const minPrice = searchParams.get("minPrice") ? parseFloat(searchParams.get("minPrice")!) : undefined;
     const maxPrice = searchParams.get("maxPrice") ? parseFloat(searchParams.get("maxPrice")!) : undefined;
-    const sort = (searchParams.get("sort") as any) || "newest";
+    const sort = (searchParams.get("sort") as "newest" | "popular" | "price_asc" | "price_desc") || "newest";
     const page = parseInt(searchParams.get("page") || "1");
     const pageSize = parseInt(searchParams.get("pageSize") || "20");
 

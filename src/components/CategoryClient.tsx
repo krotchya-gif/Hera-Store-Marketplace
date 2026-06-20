@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useTransition } from "react";
+import { useState, useEffect, useCallback, useTransition } from "react";
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
@@ -9,7 +9,6 @@ import { getProductEmoji } from "@/components/HomeClient";
 import { createClient } from "@/utils/supabase/client";
 import {
   ChevronRight,
-  Star,
   Heart,
   SlidersHorizontal,
   X,
@@ -22,23 +21,33 @@ const sortOptions = [
   { value: "price_desc", label: "Harga: Tinggi ke Rendah" },
 ];
 
-function ProductCard({ product }: { product: Product }) {
-  const [wished, setWished] = useState(false);
-  const [added, setAdded] = useState(false);
+interface CartItem {
+  id: string;
+  name: string;
+  price: number;
+  originalPrice: number | null;
+  quantity: number;
+  emoji: string | null;
+  variant: unknown;
+  stock: number;
+  slug: string | null;
+}
 
-  useEffect(() => {
+function ProductCard({ product }: { product: Product }) {
+  const [wished, setWished] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
     try {
       const wishStr = localStorage.getItem("hera_wishlist");
       if (wishStr) {
         const wish = JSON.parse(wishStr);
-        if (Array.isArray(wish) && wish.includes(product.id)) {
-          setWished(true);
-        }
+        return Array.isArray(wish) && wish.includes(product.id);
       }
     } catch (e) {
       console.error(e);
     }
-  }, [product.id]);
+    return false;
+  });
+  const [added, setAdded] = useState(false);
 
   const emoji = getProductEmoji(product.slug, product.categories?.icon);
   const finalPrice = product.discount_price ?? product.price;
@@ -58,10 +67,10 @@ function ProductCard({ product }: { product: Product }) {
       }
 
       const cartStr = localStorage.getItem("hera_cart");
-      let cart = cartStr ? JSON.parse(cartStr) : [];
+      let cart: CartItem[] = cartStr ? JSON.parse(cartStr) : [];
       if (!Array.isArray(cart)) cart = [];
 
-      const existingIndex = cart.findIndex((item: any) => item.id === product.id && !item.variant);
+      const existingIndex = cart.findIndex((item) => item.id === product.id && !item.variant);
       if (existingIndex > -1) {
         cart[existingIndex].quantity = Math.min(product.stock, cart[existingIndex].quantity + 1);
       } else {
@@ -99,7 +108,7 @@ function ProductCard({ product }: { product: Product }) {
       }
 
       const wishStr = localStorage.getItem("hera_wishlist");
-      let wish = wishStr ? JSON.parse(wishStr) : [];
+      let wish: string[] = wishStr ? JSON.parse(wishStr) : [];
       if (!Array.isArray(wish)) wish = [];
 
       const nextWished = !wished;
@@ -143,7 +152,7 @@ function ProductCard({ product }: { product: Product }) {
             className={`absolute bottom-2 left-2 right-2 py-1.5 rounded-lg text-xs font-semibold transition-all ${
               added
                 ? "bg-green-600 text-white opacity-100"
-                : "bg-white text-green-700 border border-green-200 opacity-0 group-hover:opacity-100"
+                : "bg-white text-green-700 border border-green-200 md:opacity-0 md:group-hover:opacity-100 opacity-100"
             }`}
           >
             {added ? "✓ Ditambahkan!" : "+ Keranjang"}
@@ -178,38 +187,40 @@ interface CategoryClientProps {
   initialResult: PaginatedResult<Product>;
   slug: string;
   searchQuery?: string;
+  subcategories: Category[];
 }
 
-export default function CategoryClient({ category, initialResult, slug, searchQuery: initialSearch = "" }: CategoryClientProps) {
+export default function CategoryClient({ category, initialResult, slug, searchQuery: initialSearch = "", subcategories }: CategoryClientProps) {
   const meta = mockCategoriesMetadata.find((c) => c.slug === slug);
   const description = meta?.description || "Semua produk terbaik untuk kesegaran harianmu.";
-  const subCategories = meta?.subCategories || [];
+  const subCategories = subcategories || [];
 
   const [products, setProducts] = useState<Product[]>(initialResult.data);
   const [totalCount, setTotalCount] = useState(initialResult.count);
   const [totalPages, setTotalPages] = useState(initialResult.totalPages);
 
   const [selectedSub, setSelectedSub] = useState<string | null>(null);
-  const [searchTerm, setSearchTerm] = useState(initialSearch);
+  const searchTerm = initialSearch;
   const [sortBy, setSortBy] = useState("newest");
   const [priceMin, setPriceMin] = useState("");
   const [priceMax, setPriceMax] = useState("");
-  const [minRating, setMinRating] = useState(0);
+  const [, setMinRating] = useState(0);
   const [showFilter, setShowFilter] = useState(false);
   const [page, setPage] = useState(1);
-  const [isPending, startTransition] = useTransition();
+  const [, startTransition] = useTransition();
 
-  const fetchFilteredProducts = async () => {
+  const fetchFilteredProducts = useCallback(async () => {
     try {
       const params = new URLSearchParams({
-        categorySlug: slug,
+        categorySlug: selectedSub || slug,
         sort: sortBy,
         page: page.toString(),
         pageSize: "8",
         ...(priceMin && { minPrice: priceMin }),
         ...(priceMax && { maxPrice: priceMax }),
         ...(searchTerm && { search: searchTerm }),
-        ...(selectedSub && { search: selectedSub }), // Use subcategory as search term fallback
+        // TODO: subCategory filtering needs API support
+        ...(selectedSub && { subCategory: selectedSub }),
       });
 
       const res = await fetch(`/api/products?${params}`);
@@ -222,16 +233,16 @@ export default function CategoryClient({ category, initialResult, slug, searchQu
     } catch (error) {
       console.error("Failed to fetch filtered products", error);
     }
-  };
+  }, [selectedSub, slug, sortBy, page, priceMin, priceMax, searchTerm]);
 
   useEffect(() => {
     startTransition(() => {
       fetchFilteredProducts();
     });
-  }, [sortBy, priceMin, priceMax, selectedSub, searchTerm, page]);
+  }, [fetchFilteredProducts]);
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 pb-16 md:pb-0">
       <Navbar />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
@@ -267,15 +278,15 @@ export default function CategoryClient({ category, initialResult, slug, searchQu
             </button>
             {subCategories.map((sub) => (
               <button
-                key={sub}
-                onClick={() => { setSelectedSub(sub === selectedSub ? null : sub); setPage(1); }}
+                key={sub.id}
+                onClick={() => { setSelectedSub(sub.slug === selectedSub ? null : sub.slug); setPage(1); }}
                 className={`flex-shrink-0 px-4 py-2 rounded-full text-sm font-medium transition-colors ${
-                  selectedSub === sub
+                  selectedSub === sub.slug
                     ? "bg-green-600 text-white"
                     : "bg-white border border-gray-200 text-gray-600 hover:border-green-400"
                 }`}
               >
-                {sub}
+                {sub.name}
               </button>
             ))}
           </div>

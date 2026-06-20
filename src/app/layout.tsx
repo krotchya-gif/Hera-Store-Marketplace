@@ -3,6 +3,7 @@ import Script from "next/script";
 import "./globals.css";
 import { STORE_NAME, STORE_DESCRIPTION } from "@/utils/storeConfig";
 import { getSeoSettings } from "@/lib/seo";
+import { ToastProvider } from "@/components/Toast";
 
 export async function generateMetadata(): Promise<Metadata> {
   const seo = await getSeoSettings();
@@ -24,7 +25,9 @@ export default async function RootLayout({
   return (
     <html lang="id">
       <body className="font-sans antialiased">
-        {children}
+        <ToastProvider>
+          {children}
+        </ToastProvider>
 
         {/* Meta Pixel */}
         {seo.meta_pixel_id && (

@@ -1,7 +1,7 @@
 // ─── File Upload API — Supabase Storage ─────────────────────────
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
-import { verifyAdminRole } from "@/lib/auth-utils";
+import { verifyAdminRole, handleAdminError } from "@/lib/auth-utils";
 
 export async function POST(request: NextRequest) {
   try {
@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
     const fileName = `${productId}/${Date.now()}.${fileExt}`;
 
     // Upload to Supabase Storage
-    const { data: uploadData, error: uploadError } = await supabase.storage
+    const { error: uploadError } = await supabase.storage
       .from("product-images")
       .upload(fileName, file, {
         cacheControl: "3600",
@@ -48,25 +48,32 @@ export async function POST(request: NextRequest) {
       .from("product-images")
       .getPublicUrl(fileName);
 
-    // Check if this is the first image (set as primary)
-    const { count } = await supabase
-      .from("product_images")
-      .select("*", { count: "exact", head: true })
-      .eq("product_id", productId);
+    const isTemp = productId === "temp";
+    let count = 0;
 
-    // Save to product_images table
-    const { error: dbError } = await supabase
-      .from("product_images")
-      .insert({
-        product_id: productId,
-        url: publicUrl,
-        is_primary: count === 0, // first image = primary
-        sort_order: count ?? 0,
-      });
+    if (!isTemp) {
+      // Check if this is the first image (set as primary)
+      const { count: fetchedCount } = await supabase
+        .from("product_images")
+        .select("*", { count: "exact", head: true })
+        .eq("product_id", productId);
+      
+      count = fetchedCount ?? 0;
 
-    if (dbError) {
-      console.error("[DB Insert Error]", dbError);
-      return NextResponse.json({ error: "Gagal menyimpan referensi gambar" }, { status: 400 });
+      // Save to product_images table
+      const { error: dbError } = await supabase
+        .from("product_images")
+        .insert({
+          product_id: productId,
+          url: publicUrl,
+          is_primary: count === 0, // first image = primary
+          sort_order: count,
+        });
+
+      if (dbError) {
+        console.error("[DB Insert Error]", dbError);
+        return NextResponse.json({ error: "Gagal menyimpan referensi gambar" }, { status: 400 });
+      }
     }
 
     return NextResponse.json({
@@ -74,8 +81,7 @@ export async function POST(request: NextRequest) {
       url: publicUrl,
       is_primary: count === 0,
     });
-  } catch (error: any) {
-    console.error("[API Upload]", error);
-    return NextResponse.json({ error: error?.message || "Internal Server Error" }, { status: 500 });
+  } catch (error) {
+    return handleAdminError(error);
   }
 }

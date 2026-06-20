@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { updateOrderStatus, getOrderById } from "@/lib/orders";
-import { verifyAdminRole } from "@/lib/auth-utils";
+import { verifyAdminRole, handleAdminError } from "@/lib/auth-utils";
 
 export async function GET(
   request: NextRequest,
@@ -15,8 +15,7 @@ export async function GET(
     }
     return NextResponse.json(order);
   } catch (error) {
-    console.error("[API GET Order Detail]", error);
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    return handleAdminError(error);
   }
 }
 
@@ -34,7 +33,6 @@ export async function PUT(
     }
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error("[API PUT Order]", error);
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    return handleAdminError(error);
   }
 }

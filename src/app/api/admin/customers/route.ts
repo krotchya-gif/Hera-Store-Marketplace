@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAllCustomers } from "@/lib/admin";
 import { createClient } from "@/utils/supabase/server";
-import { verifyAdminRole } from "@/lib/auth-utils";
+import { verifyAdminRole, handleAdminError } from "@/lib/auth-utils";
 
 export async function GET(request: NextRequest) {
   try {
@@ -21,20 +21,23 @@ export async function GET(request: NextRequest) {
 
     // Count active and new customers dynamically
     const supabase = await createClient();
-    const [{ count: total }, { count: active }] = await Promise.all([
+    const now = new Date();
+    const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+
+    const [{ count: total }, { count: active }, { count: newThisMonth }] = await Promise.all([
       supabase.from("profiles").select("*", { count: "exact", head: true }).eq("role", "customer"),
       supabase.from("profiles").select("*", { count: "exact", head: true }).eq("role", "customer").eq("status", "aktif"),
+      supabase.from("profiles").select("*", { count: "exact", head: true }).eq("role", "customer").gte("created_at", thisMonthStart),
     ]);
 
     const stats = {
       total: total || 0,
       active: active || 0,
-      newThisMonth: Math.round((total || 0) * 0.05), // fallback math representation
+      newThisMonth: newThisMonth || 0,
     };
 
     return NextResponse.json({ ...result, stats });
   } catch (error) {
-    console.error("[API GET Customers]", error);
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    return handleAdminError(error);
   }
 }

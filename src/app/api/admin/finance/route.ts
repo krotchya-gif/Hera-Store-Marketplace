@@ -1,7 +1,14 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 
-export async function GET(request: NextRequest) {
+function getWeekOfMonth(date: Date): number {
+  const startOfMonth = new Date(date.getFullYear(), date.getMonth(), 1);
+  const dayOfWeek = startOfMonth.getDay(); // 0=Sun, 1=Mon, ...
+  const adjustedDate = date.getDate() + dayOfWeek - 1; // Adjust so Monday is start
+  return Math.floor(adjustedDate / 7);
+}
+
+export async function GET() {
   try {
     const supabase = await createClient();
 
@@ -24,11 +31,12 @@ export async function GET(request: NextRequest) {
     // Fetch all orders
     const { data: orders, error } = await supabase
       .from("orders")
-      .select("*, profiles(name)")
+      .select("*")
       .order("created_at", { ascending: false });
 
     if (error || !orders) {
-      return NextResponse.json({ error: error?.message || "Failed to load orders" }, { status: 400 });
+      console.error("[Finance API] Query error:", error?.message || "Unknown error");
+      return NextResponse.json({ error: error?.message || "Gagal memuat data pesanan" }, { status: 400 });
     }
 
     // Calculate total stats
@@ -68,11 +76,11 @@ export async function GET(request: NextRequest) {
 
       const thisMonthOrders = paidOrders.filter(o => {
         const od = new Date(o.created_at);
-        return od.getFullYear() === thisYear && od.getMonth() === thisMonth && Math.floor(od.getDate() / 7) === i;
+        return od.getFullYear() === thisYear && od.getMonth() === thisMonth && getWeekOfMonth(od) === i;
       });
       const lastMonthOrders = paidOrders.filter(o => {
         const od = new Date(o.created_at);
-        return od.getFullYear() === lastMonthYear && od.getMonth() === lastMonth && Math.floor(od.getDate() / 7) === i;
+        return od.getFullYear() === lastMonthYear && od.getMonth() === lastMonth && getWeekOfMonth(od) === i;
       });
 
       return {
@@ -105,16 +113,19 @@ export async function GET(request: NextRequest) {
     });
 
     // Transactions list
-    const transactions = orders.slice(0, 10).map(o => ({
-      id: o.order_number,
-      date: new Date(o.created_at).toLocaleDateString("id-ID", { day: "numeric", month: "short" }),
-      customer: o.profiles?.name || (o.shipping_address as any)?.name || "Pelanggan",
-      subtotal: Number(o.subtotal) || 0,
-      shipping: Number(o.shipping_cost) || 0,
-      discount: Number(o.discount) || 0,
-      total: Number(o.total) || 0,
-      payStatus: o.payment_status,
-    }));
+    const transactions = orders.slice(0, 10).map(o => {
+      const shippingAddr = o.shipping_address as { name?: string } | null;
+      return {
+        id: o.order_number,
+        date: new Date(o.created_at).toLocaleDateString("id-ID", { day: "numeric", month: "short" }),
+        customer: shippingAddr?.name || "Pelanggan",
+        subtotal: Number(o.subtotal) || 0,
+        shipping: Number(o.shipping_cost) || 0,
+        discount: Number(o.discount) || 0,
+        total: Number(o.total) || 0,
+        payStatus: o.payment_status,
+      };
+    });
 
     return NextResponse.json({
       totalRevenue,

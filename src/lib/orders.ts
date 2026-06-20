@@ -1,6 +1,6 @@
 // ─── Orders Data Layer — Supabase queries ────────────────────────────────────
 import { createClient } from "@/utils/supabase/server";
-import type { Order, OrderItem, OrderStatus, ShippingAddress } from "@/types/database";
+import type { Order, OrderStatus, ShippingAddress } from "@/types/database";
 
 // ─── User orders ──────────────────────────────────────────────────────────────
 
@@ -166,6 +166,40 @@ export async function updateOrderStatus(
   trackingNumber?: string
 ): Promise<boolean> {
   const supabase = await createClient();
+
+  // Get current order status
+  const { data: currentOrder, error: fetchError } = await supabase
+    .from("orders")
+    .select("status")
+    .eq("id", orderId)
+    .single();
+
+  if (fetchError || !currentOrder) {
+    console.error("[updateOrderStatus fetch]", fetchError);
+    throw { status: 404, message: "Pesanan tidak ditemukan" };
+  }
+
+  const currentStatus = currentOrder.status as OrderStatus;
+
+  if (currentStatus === status) return true;
+
+  // Validate status transition
+  if (currentStatus === "selesai") {
+    throw { status: 400, message: "Pesanan yang sudah selesai tidak dapat diubah statusnya." };
+  }
+  if (currentStatus === "dibatalkan") {
+    throw { status: 400, message: "Pesanan yang sudah dibatalkan tidak dapat diubah statusnya." };
+  }
+
+  if (status === "diproses" && currentStatus !== "menunggu") {
+    throw { status: 400, message: "Hanya pesanan dengan status 'Menunggu' yang dapat diproses." };
+  }
+  if (status === "dikirim" && currentStatus !== "diproses") {
+    throw { status: 400, message: "Hanya pesanan dengan status 'Diproses' yang dapat dikirim." };
+  }
+  if (status === "selesai" && currentStatus !== "dikirim") {
+    throw { status: 400, message: "Hanya pesanan dengan status 'Dikirim' yang dapat diselesaikan." };
+  }
 
   const updatePayload: Record<string, unknown> = { status, updated_at: new Date().toISOString() };
   if (trackingNumber) updatePayload.tracking_number = trackingNumber;

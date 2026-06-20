@@ -161,10 +161,25 @@ export async function getAllProductsAdmin(filters: { search?: string; categoryId
   };
 }
 
-export async function createProduct(payload: Partial<Product>): Promise<Product | null> {
+export async function createProduct(payload: Partial<Product> & { images?: string[] }): Promise<Product | null> {
   const supabase = await createClient();
-  const { data, error } = await supabase.from("products").insert(payload).select().single();
-  if (error) { console.error("[createProduct]", error); return null; }
+  const { images, ...productData } = payload;
+  const { data, error } = await supabase.from("products").insert(productData).select().single();
+  if (error || !data) { console.error("[createProduct]", error); return null; }
+
+  if (images && images.length > 0) {
+    const imagesToInsert = images.map((url, i) => ({
+      product_id: data.id,
+      url,
+      is_primary: i === 0,
+      sort_order: i,
+    }));
+    const { error: imgError } = await supabase.from("product_images").insert(imagesToInsert);
+    if (imgError) {
+      console.error("[createProduct images]", imgError);
+    }
+  }
+
   return data as unknown as Product;
 }
 
@@ -303,10 +318,13 @@ export async function getAllCategoriesAdmin(): Promise<(Category & { product_cou
     return [];
   }
 
-  return (categories || []).map((cat: any) => ({
-    ...cat,
-    product_count: cat.products?.[0]?.count ?? 0,
-  }));
+  return (categories || []).map((cat) => {
+    const productsData = (cat as unknown as { products: { count: number }[] | null }).products;
+    return {
+      ...(cat as unknown as Category),
+      product_count: productsData?.[0]?.count ?? 0,
+    };
+  });
 }
 
 export async function createCategory(payload: Partial<Category>): Promise<Category | null> {

@@ -1,6 +1,8 @@
 // ─── Centralized Mock Data for Hera Store Marketplace ────────────────────────
 
-export const formatRp = (n: number) => `Rp ${n.toLocaleString("id-ID")}`;
+import { formatRp } from "@/utils/format";
+
+export { formatRp };
 
 // ─── Categories ───────────────────────────────────────────────────────────────
 export const categories = [

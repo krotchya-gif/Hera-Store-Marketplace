@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { updateCustomerStatus } from "@/lib/admin";
-import { verifyAdminRole } from "@/lib/auth-utils";
+import { verifyAdminRole, handleAdminError } from "@/lib/auth-utils";
 
 export async function PUT(
   request: NextRequest,
@@ -16,7 +16,6 @@ export async function PUT(
     }
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error("[API PUT Customer Status]", error);
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    return handleAdminError(error);
   }
 }

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import CategoryClient from "@/components/CategoryClient";
-import { getCategoryBySlug, getProducts } from "@/lib/products";
+import { getCategoryBySlug, getProducts, getSubcategoriesOfCategory } from "@/lib/products";
 import { getSeoSettings } from "@/lib/seo";
 import { notFound } from "next/navigation";
 
@@ -65,24 +65,28 @@ export default async function KategoriPage({ params, searchParams }: PageProps) 
         initialResult={initialResult}
         slug="semua"
         searchQuery={searchTerm}
+        subcategories={[]}
       />
     );
   }
 
-  const [category, initialResult] = await Promise.all([
-    getCategoryBySlug(slug),
-    getProducts({ categorySlug: slug, page: 1, pageSize: 8 }),
-  ]);
+  const category = await getCategoryBySlug(slug);
 
   if (!category) {
     notFound();
   }
+
+  const [initialResult, subcategories] = await Promise.all([
+    getProducts({ categorySlug: slug, page: 1, pageSize: 8 }),
+    getSubcategoriesOfCategory(category.id),
+  ]);
 
   return (
     <CategoryClient
       category={category}
       initialResult={initialResult}
       slug={slug}
+      subcategories={subcategories}
     />
   );
 }

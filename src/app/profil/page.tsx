@@ -2,6 +2,8 @@ import ProfilClient from "@/components/ProfilClient";
 import { getOrdersByUser } from "@/lib/orders";
 import { createClient } from "@/utils/supabase/server";
 
+import type { Order } from "@/types/database";
+
 export const revalidate = 0;
 
 export default async function ProfilPage() {
@@ -9,7 +11,7 @@ export default async function ProfilPage() {
   const { data: { user } } = await supabase.auth.getUser();
 
   let profile = null;
-  let orders: any[] = [];
+  let orders: Order[] = [];
 
   if (user) {
     // Load profile

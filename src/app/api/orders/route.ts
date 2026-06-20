@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createOrder } from "@/lib/orders";
+import { createOrder, type CreateOrderPayload } from "@/lib/orders";
 import { createClient } from "@/utils/supabase/server";
 
 export async function POST(request: NextRequest) {
@@ -13,7 +13,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Silakan masuk (login) terlebih dahulu untuk membuat pesanan." }, { status: 401 });
     }
 
-    const payload = {
+    const payload: CreateOrderPayload = {
       user_id: user.id,
       shipping_address: body.shipping_address,
       shipping_method: body.shipping_method,
@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
       items: body.items,
     };
 
-    const order = await createOrder(payload as any);
+    const order = await createOrder(payload);
     if (!order) {
       return NextResponse.json({ error: "Gagal membuat pesanan" }, { status: 400 });
     }

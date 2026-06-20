@@ -1,5 +1,6 @@
 // ─── Admin Auth Helper ──────────────────────────────────────────
 import { createClient } from "@/utils/supabase/server";
+import { NextResponse } from "next/server";
 
 export type AdminRole = "super_admin" | "admin" | "operator" | "finance";
 
@@ -29,4 +30,13 @@ export async function verifyAdminRole(): Promise<{ role: AdminRole; userId: stri
   }
 
   return { role: profile.role as AdminRole, userId: user.id };
+}
+
+export function handleAdminError(error: unknown) {
+  if (error && typeof error === "object" && "status" in error) {
+    const err = error as { status: number; message: string };
+    return NextResponse.json({ error: err.message }, { status: err.status });
+  }
+  console.error("Admin API Error:", error);
+  return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
 }

@@ -11,8 +11,7 @@ export interface VoucherValidationResult {
 
 export async function validateVoucher(
   code: string,
-  cartTotal: number,
-  userId?: string
+  cartTotal: number
 ): Promise<VoucherValidationResult> {
   const supabase = await createClient();
   const now = new Date().toISOString();

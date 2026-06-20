@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useTransition } from "react";
 import { Plus, Loader2, Upload } from "lucide-react";
 import {
   STORE_NAME,
@@ -32,8 +32,15 @@ interface AdminProfile {
   created_at: string;
 }
 
+const Toggle = ({ active, onToggle }: { active: boolean; onToggle: () => void }) => (
+  <div onClick={onToggle} className={`w-10 h-5 rounded-full cursor-pointer relative transition-colors ${active ? "bg-green-500" : "bg-gray-200"}`}>
+    <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${active ? "translate-x-5" : "translate-x-0.5"}`} />
+  </div>
+);
+
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState("Informasi Toko");
+  const [, startTransition] = useTransition();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -174,16 +181,18 @@ export default function SettingsPage() {
         setSeoRobotsTxt(settings.seo.robots_txt_content || "");
         setSeoSitemapXml(settings.seo.sitemap_xml_content || "");
       }
-    } catch (err: any) {
+    } catch (err) {
       console.error("[fetchSettings]", err);
-      setError(err.message || "Gagal memuat data pengaturan");
+      setError(err instanceof Error ? err.message : "Gagal memuat data pengaturan");
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchSettings();
+    startTransition(() => {
+      fetchSettings();
+    });
   }, []);
 
   const saveStoreInfo = async () => {
@@ -219,8 +228,8 @@ export default function SettingsPage() {
         throw new Error(errorJson.error || "Gagal menyimpan informasi toko");
       }
       alert("Informasi toko berhasil disimpan!");
-    } catch (err: any) {
-      alert(err.message);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : String(err));
     } finally {
       setSaving(false);
     }
@@ -247,8 +256,8 @@ export default function SettingsPage() {
         throw new Error(errorJson.error || "Gagal menyimpan pengaturan pengiriman");
       }
       alert("Pengaturan pengiriman berhasil disimpan!");
-    } catch (err: any) {
-      alert(err.message);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : String(err));
     } finally {
       setSaving(false);
     }
@@ -278,8 +287,8 @@ export default function SettingsPage() {
         throw new Error(errorJson.error || "Gagal menyimpan pengaturan pembayaran");
       }
       alert("Pengaturan pembayaran berhasil disimpan!");
-    } catch (err: any) {
-      alert(err.message);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : String(err));
     } finally {
       setSaving(false);
     }
@@ -304,8 +313,8 @@ export default function SettingsPage() {
         throw new Error(errorJson.error || "Gagal menyimpan pengaturan notifikasi");
       }
       alert("Pengaturan notifikasi berhasil disimpan!");
-    } catch (err: any) {
-      alert(err.message);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : String(err));
     } finally {
       setSaving(false);
     }
@@ -330,8 +339,8 @@ export default function SettingsPage() {
       setShowInviteModal(false);
       setInviteEmail("");
       fetchSettings();
-    } catch (err: any) {
-      alert(err.message);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : String(err));
     } finally {
       setSaving(false);
     }
@@ -353,8 +362,8 @@ export default function SettingsPage() {
       if (!res.ok) throw new Error(data.error || "Gagal mencabut admin");
       alert("Hak akses admin berhasil dicabut.");
       fetchSettings();
-    } catch (err: any) {
-      alert(err.message);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : String(err));
     } finally {
       setSaving(false);
     }
@@ -384,8 +393,8 @@ export default function SettingsPage() {
         throw new Error(errorJson.error || "Gagal menyimpan pengaturan SEO");
       }
       alert("Pengaturan SEO berhasil disimpan!");
-    } catch (err: any) {
-      alert(err.message);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : String(err));
     } finally {
       setSaving(false);
     }
@@ -400,12 +409,6 @@ export default function SettingsPage() {
       default: return role;
     }
   };
-
-  const Toggle = ({ active, onToggle }: { active: boolean; onToggle: () => void }) => (
-    <div onClick={onToggle} className={`w-10 h-5 rounded-full cursor-pointer relative transition-colors ${active ? "bg-green-500" : "bg-gray-200"}`}>
-      <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${active ? "translate-x-5" : "translate-x-0.5"}`} />
-    </div>
-  );
 
   if (loading) {
     return (

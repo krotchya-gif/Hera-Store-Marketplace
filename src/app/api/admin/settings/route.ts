@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
     const supabase = await createClient();
 
@@ -41,16 +41,16 @@ export async function GET(request: NextRequest) {
     }
 
     // Format settings into a key-value map
-    const settingsMap = (settingsData || []).reduce((acc: any, item) => {
+    const settingsMap = (settingsData || []).reduce<Record<string, unknown>>((acc, item) => {
       acc[item.key] = item.value;
       return acc;
     }, {});
 
     // Ensure default settings are returned if not set in DB
     const finalSettings = {
-      store_info: settingsMap.store_info || {
+      store_info: (settingsMap["store_info"] as Record<string, unknown> | undefined) || {
         name: "Hera Store",
-        email: "info@trigunasentosa.com",
+        email: "info@herastore.com",
         phone: "+6281234567890",
         city: "Jakarta Selatan",
         description: "Marketplace produk rumah tangga premium.",
@@ -58,18 +58,18 @@ export async function GET(request: NextRequest) {
         operational_hours: { start: "08:00", end: "21:00", days: ["Senin", "Selasa", "Rabu", "Kamis", "Jumat"] },
         social_media: { instagram: "", tiktok: "", facebook: "" }
       },
-      shipping: settingsMap.shipping || {
+      shipping: (settingsMap["shipping"] as Record<string, unknown> | undefined) || {
         free_shipping: true,
         free_shipping_min: 100000,
         couriers: ["JNE", "J&T Express", "SiCepat", "Gosend", "Anteraja"],
         origin_city: "Jakarta Selatan"
       },
-      payment: settingsMap.payment || {
+      payment: (settingsMap["payment"] as Record<string, unknown> | undefined) || {
         methods: ["Transfer Bank (BCA, Mandiri, BRI)", "GoPay", "OVO", "Dana", "ShopeePay", "Virtual Account", "COD (Bayar di Tempat)"],
         payment_timeout_hours: 24,
         bank_account: { bank: "BCA", owner: "PT Hera Store", number: "1234567890" }
       },
-      seo: settingsMap.seo || {
+      seo: (settingsMap["seo"] as Record<string, unknown> | undefined) || {
         meta_pixel_id: "",
         ga4_measurement_id: "",
         default_title: "",
@@ -78,7 +78,7 @@ export async function GET(request: NextRequest) {
         robots_txt_content: "",
         sitemap_xml_content: "",
       },
-      notifications: settingsMap.notifications || {
+      notifications: (settingsMap["notifications"] as Record<string, unknown> | undefined) || {
         email: {
           "Pesanan baru masuk": true,
           "Pembayaran diterima": true,

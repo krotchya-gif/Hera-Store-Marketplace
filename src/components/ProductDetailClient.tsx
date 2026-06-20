@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useMemo } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { getProductEmoji } from "@/components/HomeClient";
@@ -21,7 +22,7 @@ import {
 } from "lucide-react";
 import type { Product, Review } from "@/types/database";
 
-const formatRp = (n: number) => `Rp ${n.toLocaleString("id-ID")}`;
+import { formatRp } from "@/utils/format";
 
 interface ProductDetailClientProps {
   product: Product;
@@ -40,41 +41,43 @@ export default function ProductDetailClient({
   ratingSummary,
   relatedProducts,
 }: ProductDetailClientProps) {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<"deskripsi" | "spesifikasi" | "ulasan">("deskripsi");
   const [quantity, setQuantity] = useState(1);
   
   // Resolve variants
   const hasVariants = product.product_variants && product.product_variants.length > 0;
   const [selectedVariantId, setSelectedVariantId] = useState<string | null>(
-    hasVariants ? product.product_variants![0].id : null
+    product.product_variants && product.product_variants.length > 0
+      ? product.product_variants[0].id
+      : null
   );
 
-  const currentVariant = hasVariants
-    ? product.product_variants!.find((v) => v.id === selectedVariantId)
-    : null;
+  const currentVariant = useMemo(() => {
+    if (!product.product_variants || product.product_variants.length === 0) return null;
+    return product.product_variants.find((v) => v.id === selectedVariantId) || null;
+  }, [product.product_variants, selectedVariantId]);
 
-  const [wished, setWished] = useState(false);
-  const [addedToCart, setAddedToCart] = useState(false);
-  const [activeImage, setActiveImage] = useState(0);
-
-  useEffect(() => {
+  const [wished, setWished] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
     try {
       const wishStr = localStorage.getItem("hera_wishlist");
       if (wishStr) {
         const wish = JSON.parse(wishStr);
-        if (Array.isArray(wish) && wish.includes(product.id)) {
-          setWished(true);
-        }
+        return Array.isArray(wish) && wish.includes(product.id);
       }
     } catch (e) {
       console.error(e);
     }
-  }, [product.id]);
+    return false;
+  });
+  const [addedToCart, setAddedToCart] = useState(false);
+  const [activeImage, setActiveImage] = useState(0);
 
   // Images resolution
   const imageList = product.product_images && product.product_images.length > 0
     ? product.product_images.map((img) => img.url)
-    : [getProductEmoji(product.slug, product.categories?.icon), "📸", "🖼️", "🎁"];
+    : [getProductEmoji(product.slug, product.categories?.icon)];
 
   const maxStock = currentVariant ? currentVariant.stock : product.stock;
   const displayPrice = currentVariant ? currentVariant.price : (product.discount_price ?? product.price);
@@ -102,19 +105,19 @@ export default function ProductDetailClient({
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         alert("Silakan masuk (login) terlebih dahulu untuk berbelanja.");
-        window.location.href = "/profil";
+        router.push("/profil");
         return;
       }
 
       const cartStr = localStorage.getItem("hera_cart");
-      let cart = cartStr ? JSON.parse(cartStr) : [];
+      let cart: { id: string; name: string; price: number; originalPrice: number | null; quantity: number; emoji: string; variant: unknown; variantId: string | null; stock: number; slug: string | null; }[] = cartStr ? JSON.parse(cartStr) : [];
       if (!Array.isArray(cart)) cart = [];
 
       const variantName = currentVariant ? currentVariant.name : null;
       const variantId = currentVariant ? currentVariant.id : null;
 
       const existingIndex = cart.findIndex(
-        (item: any) => item.id === product.id && item.variant === variantName
+        (item) => item.id === product.id && item.variant === variantName
       );
 
       const itemPrice = currentVariant ? currentVariant.price : (product.discount_price ?? product.price);
@@ -150,7 +153,7 @@ export default function ProductDetailClient({
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 pb-16 md:pb-0">
       <Navbar />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 md:py-6">
@@ -191,12 +194,12 @@ export default function ProductDetailClient({
                     const { data: { user } } = await supabase.auth.getUser();
                     if (!user) {
                       alert("Silakan masuk (login) terlebih dahulu untuk menambahkan wishlist.");
-                      window.location.href = "/profil";
+                      router.push("/profil");
                       return;
                     }
 
                     const wishStr = localStorage.getItem("hera_wishlist");
-                    let wish = wishStr ? JSON.parse(wishStr) : [];
+                    let wish: string[] = wishStr ? JSON.parse(wishStr) : [];
                     if (!Array.isArray(wish)) wish = [];
 
                     const nextWished = !wished;

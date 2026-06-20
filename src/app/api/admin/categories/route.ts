@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAllCategoriesAdmin, createCategory } from "@/lib/admin";
-import { verifyAdminRole } from "@/lib/auth-utils";
+import { verifyAdminRole, handleAdminError } from "@/lib/auth-utils";
 
 export async function GET() {
   try {
@@ -8,8 +8,7 @@ export async function GET() {
     const categories = await getAllCategoriesAdmin();
     return NextResponse.json(categories);
   } catch (error) {
-    console.error("[API GET Admin Categories]", error);
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    return handleAdminError(error);
   }
 }
 
@@ -23,7 +22,6 @@ export async function POST(request: NextRequest) {
     }
     return NextResponse.json(category);
   } catch (error) {
-    console.error("[API POST Admin Categories]", error);
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    return handleAdminError(error);
   }
 }

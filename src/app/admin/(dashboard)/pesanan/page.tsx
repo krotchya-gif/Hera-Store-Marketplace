@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useTransition } from "react";
+import { useState, useEffect, useCallback, useTransition } from "react";
 import StatusBadge from "@/components/admin/StatusBadge";
 import { Search, Download, X, ChevronLeft, ChevronRight } from "lucide-react";
 import type { Order, OrderStatus } from "@/types/database";
@@ -15,7 +15,7 @@ const statusKeys: Record<string, string> = {
   "Dibatalkan": "dibatalkan",
 };
 
-const formatRp = (n: number) => `Rp ${n.toLocaleString("id-ID")}`;
+import { formatRp } from "@/utils/format";
 
 function OrderDetailModal({
   orderId,
@@ -31,7 +31,7 @@ function OrderDetailModal({
   const [trackingNumberInput, setTrackingNumberInput] = useState("");
   const [isPending, startTransition] = useTransition();
 
-  const fetchOrderDetail = async () => {
+  const fetchOrderDetail = useCallback(async () => {
     setIsLoading(true);
     try {
       const res = await fetch(`/api/admin/orders/${orderId}`);
@@ -45,11 +45,13 @@ function OrderDetailModal({
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [orderId]);
 
   useEffect(() => {
-    fetchOrderDetail();
-  }, [orderId]);
+    startTransition(() => {
+      fetchOrderDetail();
+    });
+  }, [fetchOrderDetail]);
 
   const handleUpdateStatus = async (status: OrderStatus) => {
     startTransition(async () => {
@@ -284,11 +286,13 @@ export default function OrdersPage() {
     diproses: 0,
     dikirim: 0,
     selesai: 0,
+    dibatalkan: 0,
   });
 
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+  const [, startTransition] = useTransition();
 
-  const fetchOrders = async () => {
+  const fetchOrders = useCallback(async () => {
     setIsLoading(true);
     try {
       const params = new URLSearchParams({
@@ -313,11 +317,13 @@ export default function OrdersPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [currentPage, statusFilter, search, dateFrom, dateTo]);
 
   useEffect(() => {
-    fetchOrders();
-  }, [currentPage, statusFilter, search, dateFrom, dateTo]);
+    startTransition(() => {
+      fetchOrders();
+    });
+  }, [fetchOrders]);
 
   const totalPages = Math.ceil(totalCount / 10);
 
@@ -326,6 +332,7 @@ export default function OrdersPage() {
     { label: "Menunggu", value: stats.menunggu, icon: "⏳", color: "bg-yellow-50 text-yellow-600" },
     { label: "Dikirim", value: stats.dikirim, icon: "🚚", color: "bg-purple-50 text-purple-700" },
     { label: "Selesai", value: stats.selesai, icon: "✅", color: "bg-green-50 text-green-700" },
+    { label: "Dibatalkan", value: stats.dibatalkan, icon: "❌", color: "bg-red-50 text-red-600" },
   ];
 
   return (
@@ -336,7 +343,7 @@ export default function OrdersPage() {
       </div>
 
       {/* Mini Stat Row */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         {miniStats.map((s) => (
           <div key={s.label} className={`${s.color} rounded-2xl p-4 flex items-center gap-3`}>
             <span className="text-2xl">{s.icon}</span>

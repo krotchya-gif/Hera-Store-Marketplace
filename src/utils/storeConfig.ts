@@ -12,16 +12,15 @@ export const STORE_ADDRESS =
   "Jl. Industri No. 45, Jakarta Selatan, DKI Jakarta 12345";
 export const STORE_CITY = process.env.NEXT_PUBLIC_STORE_CITY || "Jakarta Selatan";
 
-// Untuk domain email dinamis yang menyesuaikan dengan nama toko
+// Untuk domain email dinamis yang menyesuaikan dengan email toko
 export const getStoreDomain = () => {
-  const cleanName = STORE_NAME.toLowerCase().replace(/[^a-z0-9]/g, "");
-  return `${cleanName}.com`;
+  return STORE_EMAIL.split("@")[1] || "herastore.com";
 };
 
-// Format email otomatis jika default triguna masih ada
+// Format email otomatis dengan domain toko
 export const getFormattedEmail = (email?: string) => {
-  if (!email || email.includes("trigunasentosa.com")) {
-    return `info@${getStoreDomain()}`;
+  if (!email) {
+    return STORE_EMAIL;
   }
   return email;
 };

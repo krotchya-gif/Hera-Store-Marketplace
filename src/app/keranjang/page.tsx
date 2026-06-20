@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useTransition } from "react";
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
-import { initialCartItems, CartItem, formatRp } from "@/utils/mockData";
+import { formatRp } from "@/utils/mockData";
+import { createClient } from "@/utils/supabase/client";
 import {
   Trash2,
   Plus,
@@ -16,35 +17,82 @@ import {
   Shield,
 } from "lucide-react";
 
+interface LocalCartItem {
+  id: string;
+  name: string;
+  price: number;
+  originalPrice: number | null;
+  quantity: number;
+  emoji: string | null;
+  variant: string | null;
+  stock: number;
+  slug: string | null;
+}
+
 export default function KeranjangPage() {
-  const [cartItems, setCartItems] = useState<any[]>([]);
-  const [checkedItems, setCheckedItems] = useState<any[]>([]);
+  const [cartItems, setCartItems] = useState<LocalCartItem[]>([]);
+  const [checkedItems, setCheckedItems] = useState<string[]>([]);
   const [voucherCode, setVoucherCode] = useState("");
   const [appliedVoucher, setAppliedVoucher] = useState<string | null>(null);
   const [discountValue, setDiscountValue] = useState(0);
   const [voucherError, setVoucherError] = useState("");
   const [isValidating, setIsValidating] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [freeShippingMin, setFreeShippingMin] = useState(50000);
+  const [freeShippingActive, setFreeShippingActive] = useState(true);
+  const [shippingCost, setShippingCost] = useState(12000);
+  const [, startTransition] = useTransition();
 
-  // Load cart on mount
+  // Load cart and settings on mount
   useEffect(() => {
-    setMounted(true);
+    startTransition(() => {
+      setMounted(true);
+    });
     try {
       const cartStr = localStorage.getItem("hera_cart");
       if (cartStr) {
         const cart = JSON.parse(cartStr);
         if (Array.isArray(cart)) {
-          setCartItems(cart);
-          setCheckedItems(cart.map((item: any) => item.id));
+          startTransition(() => {
+            setCartItems(cart);
+            setCheckedItems(cart.map((item) => item.id));
+          });
         }
       }
     } catch (e) {
       console.error(e);
     }
+
+    // Fetch shipping settings from public store_settings table
+    const loadSettings = async () => {
+      try {
+        const supabase = createClient();
+        const { data } = await supabase
+          .from("store_settings")
+          .select("*")
+          .in("key", ["shipping"]);
+        if (data) {
+          const shipping = data.find(d => d.key === "shipping")?.value as any;
+          if (shipping?.free_shipping_min) setFreeShippingMin(shipping.free_shipping_min);
+          if (shipping?.free_shipping === false) setFreeShippingActive(false);
+        }
+      } catch (e) {
+        console.error("Failed to load settings", e);
+      }
+    };
+    loadSettings();
   }, []);
 
+  // Cleanup checkout data when cart becomes empty
+  useEffect(() => {
+    if (mounted && cartItems.length === 0) {
+      localStorage.removeItem("hera_checkout_items");
+      localStorage.removeItem("hera_applied_voucher");
+    }
+  }, [mounted, cartItems.length]);
+
   // Save cart to storage helper
-  const saveCartToStorage = (updatedCart: any[]) => {
+  const saveCartToStorage = (updatedCart: LocalCartItem[]) => {
     localStorage.setItem("hera_cart", JSON.stringify(updatedCart));
     window.dispatchEvent(new Event("cart-updated"));
   };
@@ -56,13 +104,13 @@ export default function KeranjangPage() {
     else setCheckedItems(cartItems.map((i) => i.id));
   };
 
-  const toggleItem = (id: any) => {
+  const toggleItem = (id: string) => {
     setCheckedItems((prev) =>
       prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
     );
   };
 
-  const updateQty = (id: any, delta: number) => {
+  const updateQty = (id: string, delta: number) => {
     const updated = cartItems.map((item) =>
       item.id === id
         ? { ...item, quantity: Math.max(1, Math.min(item.stock || 99, item.quantity + delta)) }
@@ -72,7 +120,7 @@ export default function KeranjangPage() {
     saveCartToStorage(updated);
   };
 
-  const removeItem = (id: any) => {
+  const removeItem = (id: string) => {
     const updated = cartItems.filter((item) => item.id !== id);
     setCartItems(updated);
     setCheckedItems((prev) => prev.filter((i) => i !== id));
@@ -116,11 +164,15 @@ export default function KeranjangPage() {
     }
   };
 
-  const ongkir = subtotal > 50000 ? 0 : 12000;
+  const ongkir = (freeShippingActive && subtotal >= freeShippingMin) ? 0 : shippingCost;
   const diskon = appliedVoucher ? discountValue : 0;
   const total = subtotal + ongkir - diskon;
 
   const handleCheckout = () => {
+    if (selectedItems.length === 0) {
+      alert("Pilih minimal satu produk untuk melanjutkan checkout.");
+      return;
+    }
     localStorage.setItem("hera_checkout_items", JSON.stringify(selectedItems));
     localStorage.setItem("hera_applied_voucher", JSON.stringify({
       code: appliedVoucher,
@@ -141,7 +193,7 @@ export default function KeranjangPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 pb-16 md:pb-0">
       <Navbar />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">

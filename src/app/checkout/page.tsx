@@ -1,14 +1,13 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useTransition, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
+import { useToast } from "@/components/Toast";
+import { createClient } from "@/utils/supabase/client";
 import {
-  shippingOptions,
-  paymentMethods,
-  initialCartItems,
   formatRp,
 } from "@/utils/mockData";
 import {
@@ -18,12 +17,37 @@ import {
   CreditCard,
   CheckCircle,
   Plus,
-  Edit2,
   Check,
   Copy,
+  X,
 } from "lucide-react";
 
 type Step = 1 | 2 | 3 | 4 | 5;
+
+interface SavedAddress {
+  id: string;
+  user_id: string;
+  label: string;
+  name: string;
+  phone: string;
+  address: string;
+  city: string;
+  province: string;
+  postal_code: string;
+  is_default: boolean;
+  created_at: string;
+}
+
+interface CheckoutItem {
+  id: string;
+  name: string;
+  price: number;
+  quantity: number;
+  image?: string;
+  emoji?: string | null;
+  variantId?: string | null;
+  variant?: string | null;
+}
 
 const STEPS = [
   { id: 1, label: "Alamat" },
@@ -35,61 +59,176 @@ const STEPS = [
 
 export default function CheckoutPage() {
   const router = useRouter();
+  const { toast } = useToast();
   const [step, setStep] = useState<Step>(1);
-  const [savedAddresses, setSavedAddresses] = useState<any[]>([]);
+  const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([]);
   const [selectedAddress, setSelectedAddress] = useState<string | null>(null);
   const [selectedShipping, setSelectedShipping] = useState<string | null>(null);
   const [selectedPayment, setSelectedPayment] = useState<string | null>(null);
+  const [shippingOptions, setShippingOptions] = useState<{ courier: string; logo: string; services: { name: string; code: string; etd: string; price: number }[] }[]>([]);
+  const [paymentMethods, setPaymentMethods] = useState<{ group: string; icon: string; options: { code: string; name: string; logo: string }[] }[]>([]);
 
   const [orderNumber, setOrderNumber] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [copied, setCopied] = useState(false);
+  const isSubmittingRef = useRef(false);
 
-  const [checkoutItems, setCheckoutItems] = useState<any[]>([]);
+  const [checkoutItems, setCheckoutItems] = useState<CheckoutItem[]>([]);
   const [subtotal, setSubtotal] = useState(0);
   const [discount, setDiscount] = useState(0);
-  const [voucherCode, setVoucherCode] = useState<string | null>(null);
+  const [, setVoucherCode] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
 
+  const [, startTransition] = useTransition();
+
+  // Address modal states
+  const [showAddressForm, setShowAddressForm] = useState(false);
+  const [addressForm, setAddressForm] = useState({
+    label: "Rumah",
+    name: "",
+    phone: "",
+    address: "",
+    city: "",
+    province: "",
+    postal_code: "",
+    is_default: false,
+  });
+  const [savingAddress, setSavingAddress] = useState(false);
+
   useEffect(() => {
-    setMounted(true);
+    startTransition(() => {
+      setMounted(true);
+    });
 
     // Fetch saved addresses from API
     fetch("/api/addresses")
       .then((r) => r.ok ? r.json() : [])
       .then((addrs) => {
-        setSavedAddresses(addrs);
-        if (addrs.length > 0) {
-          const defaultAddr = addrs.find((a: any) => a.is_default) || addrs[0];
-          setSelectedAddress(defaultAddr.id);
-        }
+        startTransition(() => {
+          setSavedAddresses(addrs);
+          if (addrs.length > 0) {
+            const defaultAddr = addrs.find((a: SavedAddress) => a.is_default) || addrs[0];
+            setSelectedAddress(defaultAddr.id);
+          }
+        });
       })
       .catch(console.error);
+
+    // Fetch shipping & payment settings from public store_settings
+    const loadSettings = async () => {
+      try {
+        const supabase = createClient();
+        const { data } = await supabase
+          .from("store_settings")
+          .select("*")
+          .in("key", ["shipping", "payment"]);
+        if (data) {
+          const shipping = data.find(d => d.key === "shipping")?.value as any;
+          const payment = data.find(d => d.key === "payment")?.value as any;
+
+          if (shipping?.couriers) {
+            const couriers = shipping.couriers.map((name: string) => ({
+              courier: name,
+              logo: name.charAt(0),
+              services: [{ name: "Regular", code: name.toLowerCase().replace(/\s/g, "-"), etd: "2-5 hari", price: 12000 }]
+            }));
+            startTransition(() => {
+              setShippingOptions(couriers);
+            });
+          }
+          if (payment?.methods) {
+            const methods = [{
+              group: "Pembayaran",
+              icon: "💳",
+              options: payment.methods.map((name: string) => ({
+                code: name.toLowerCase().replace(/[\s()]/g, "-"),
+                name,
+                logo: name.charAt(0)
+              }))
+            }];
+            startTransition(() => {
+              setPaymentMethods(methods);
+            });
+          }
+        }
+      } catch (e) {
+        console.error("Failed to load settings", e);
+      }
+    };
+    loadSettings();
 
     try {
       const itemsStr = localStorage.getItem("hera_checkout_items");
       if (itemsStr) {
         const items = JSON.parse(itemsStr);
-        if (Array.isArray(items)) {
-          setCheckoutItems(items);
-          setSubtotal(items.reduce((sum, i) => sum + i.price * i.quantity, 0));
+        if (Array.isArray(items) && items.length > 0) {
+          startTransition(() => {
+            setCheckoutItems(items);
+            setSubtotal(items.reduce((sum, i) => sum + i.price * i.quantity, 0));
+          });
+        } else {
+          router.replace("/keranjang");
         }
+      } else {
+        router.replace("/keranjang");
       }
 
       const voucherStr = localStorage.getItem("hera_applied_voucher");
       if (voucherStr) {
         const voucher = JSON.parse(voucherStr);
         if (voucher && voucher.code) {
-          setVoucherCode(voucher.code);
-          setDiscount(voucher.discount || 0);
+          startTransition(() => {
+            setVoucherCode(voucher.code);
+            setDiscount(voucher.discount || 0);
+          });
         }
       }
     } catch (e) {
       console.error(e);
     }
-  }, []);
+  }, [router]);
 
-  const address = savedAddresses.find((a: any) => a.id === selectedAddress)!;
+  const openNewAddress = () => {
+    setAddressForm({
+      label: "Rumah",
+      name: "",
+      phone: "",
+      address: "",
+      city: "",
+      province: "",
+      postal_code: "",
+      is_default: false,
+    });
+    setShowAddressForm(true);
+  };
+
+  const handleSaveAddress = async () => {
+    setSavingAddress(true);
+    try {
+      const res = await fetch("/api/addresses", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(addressForm),
+      });
+      if (res.ok) {
+        setShowAddressForm(false);
+        const addrs = await fetch("/api/addresses").then((r) => (r.ok ? r.json() : []));
+        startTransition(() => {
+          setSavedAddresses(addrs);
+          if (addrs.length > 0) {
+            const newest = addrs[addrs.length - 1];
+            setSelectedAddress(newest.id);
+          }
+        });
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setSavingAddress(false);
+    }
+  };
+
+  const address = savedAddresses.find((a: SavedAddress) => a.id === selectedAddress)!;
 
   const shippingService = shippingOptions
     .flatMap((c) => c.services.map((s) => ({ ...s, courier: c.courier })))
@@ -121,6 +260,8 @@ export default function CheckoutPage() {
       return;
     }
 
+    if (isSubmittingRef.current || isSubmitting) return;
+    isSubmittingRef.current = true;
     setIsSubmitting(true);
     try {
       const payload = {
@@ -183,8 +324,9 @@ export default function CheckoutPage() {
       setStep(5);
     } catch (error) {
       console.error("Failed to create order", error);
-      alert("Gagal membuat pesanan. Silakan coba lagi.");
+      toast("error", "Gagal membuat pesanan. Silakan coba lagi.");
     } finally {
+      isSubmittingRef.current = false;
       setIsSubmitting(false);
     }
   };
@@ -202,7 +344,7 @@ export default function CheckoutPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 pb-16 md:pb-0">
       <Navbar />
 
       <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6">
@@ -293,13 +435,17 @@ export default function CheckoutPage() {
                         <p className="text-sm text-gray-600">{addr.phone}</p>
                         <p className="text-sm text-gray-700 mt-0.5">{addr.address}</p>
                         <p className="text-sm text-gray-500">
-                          {addr.city}, {addr.province} {addr.postalCode}
+                          {addr.city}, {addr.province} {addr.postal_code}
                         </p>
                       </div>
                     </label>
                   ))}
                 </div>
-                <button className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed border-green-300 text-green-700 font-medium text-sm hover:bg-green-50 transition-colors">
+                <button
+                  type="button"
+                  onClick={openNewAddress}
+                  className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed border-green-300 text-green-700 font-medium text-sm hover:bg-green-50 transition-colors"
+                >
                   <Plus className="w-4 h-4" /> Tambah Alamat Baru
                 </button>
               </div>
@@ -431,7 +577,7 @@ export default function CheckoutPage() {
                     <div>
                       <p className="text-sm font-semibold text-gray-700">Alamat Pengiriman</p>
                       <p className="text-sm text-gray-600">{address.name} · {address.phone}</p>
-                      <p className="text-sm text-gray-600">{address.address}, {address.city} {address.postalCode}</p>
+                      <p className="text-sm text-gray-600">{address.address}, {address.city} {address.postal_code}</p>
                     </div>
                   </div>
                   <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-xl">
@@ -595,6 +741,117 @@ export default function CheckoutPage() {
           )}
         </div>
       </div>
+
+      {showAddressForm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowAddressForm(false)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 z-10 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-bold text-gray-900">Tambah Alamat Baru</h3>
+              <button onClick={() => setShowAddressForm(false)} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="space-y-3">
+              <div className="grid grid-cols-3 gap-3">
+                {["Rumah", "Kantor", "Lainnya"].map((l) => (
+                  <button
+                    key={l}
+                    type="button"
+                    onClick={() => setAddressForm({ ...addressForm, label: l })}
+                    className={`py-2 rounded-xl text-xs font-semibold border ${
+                      addressForm.label === l
+                        ? "bg-green-600 text-white border-green-600"
+                        : "border-gray-200 text-gray-600 hover:bg-gray-50"
+                    }`}
+                  >
+                    {l}
+                  </button>
+                ))}
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Nama Penerima</label>
+                  <input
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-green-400"
+                    value={addressForm.name}
+                    onChange={(e) => setAddressForm({ ...addressForm, name: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">No. HP</label>
+                  <input
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-green-400"
+                    value={addressForm.phone}
+                    onChange={(e) => setAddressForm({ ...addressForm, phone: e.target.value })}
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Alamat Lengkap</label>
+                <textarea
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-green-400 resize-none"
+                  rows={2}
+                  value={addressForm.address}
+                  onChange={(e) => setAddressForm({ ...addressForm, address: e.target.value })}
+                />
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Kota</label>
+                  <input
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-green-400"
+                    value={addressForm.city}
+                    onChange={(e) => setAddressForm({ ...addressForm, city: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Provinsi</label>
+                  <input
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-green-400"
+                    value={addressForm.province}
+                    onChange={(e) => setAddressForm({ ...addressForm, province: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Kode Pos</label>
+                  <input
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-green-400"
+                    value={addressForm.postal_code}
+                    onChange={(e) => setAddressForm({ ...addressForm, postal_code: e.target.value })}
+                  />
+                </div>
+              </div>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={addressForm.is_default}
+                  onChange={(e) => setAddressForm({ ...addressForm, is_default: e.target.checked })}
+                  className="accent-green-600"
+                />
+                <span className="text-sm text-gray-600">Jadikan alamat utama</span>
+              </label>
+            </div>
+            <div className="flex gap-2 mt-5">
+              <button
+                type="button"
+                onClick={() => setShowAddressForm(false)}
+                className="flex-1 border border-gray-200 text-gray-600 font-semibold py-2.5 rounded-xl text-sm"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveAddress}
+                disabled={savingAddress}
+                className="flex-1 bg-green-600 text-white font-semibold py-2.5 rounded-xl text-sm disabled:opacity-50"
+              >
+                {savingAddress ? "Menyimpan..." : "Simpan"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <Footer />
     </div>

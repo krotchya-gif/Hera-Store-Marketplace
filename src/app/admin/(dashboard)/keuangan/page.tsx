@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useTransition } from "react";
 import {
   BarChart,
   Bar,
@@ -54,26 +54,32 @@ export default function FinancePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const [, startTransition] = useTransition();
+
   const fetchFinanceData = async () => {
     try {
       setLoading(true);
       setError(null);
       const res = await fetch("/api/admin/finance");
       if (!res.ok) {
-        throw new Error(`Error: ${res.statusText}`);
+        const errBody = await res.json().catch(() => null);
+        throw new Error(errBody?.error || res.statusText);
       }
       const json = await res.json();
       setData(json);
-    } catch (err: any) {
+    } catch (err) {
       console.error("[Fetch Finance Data]", err);
-      setError(err?.message || "Gagal memuat data keuangan");
+      const message = err instanceof Error ? err.message : "Gagal memuat data keuangan";
+      setError(message);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchFinanceData();
+    startTransition(() => {
+      fetchFinanceData();
+    });
   }, []);
 
   if (loading) {
@@ -156,7 +162,7 @@ export default function FinancePage() {
               <XAxis dataKey="day" tick={{ fontSize: 11, fill: "#9CA3AF" }} tickLine={false} axisLine={false} />
               <YAxis tickFormatter={formatRupiah} tick={{ fontSize: 10, fill: "#9CA3AF" }} tickLine={false} axisLine={false} width={65} />
               <Tooltip
-                formatter={(v: any, name: any) => [name === "pendapatan" ? `Rp ${Number(v).toLocaleString("id-ID")}` : v, name === "pendapatan" ? "Pendapatan" : "Pesanan"]}
+                formatter={(v, name) => [name === "pendapatan" ? `Rp ${Number(v).toLocaleString("id-ID")}` : v, name === "pendapatan" ? "Pendapatan" : "Pesanan"]}
                 contentStyle={{ borderRadius: "12px", border: "1px solid #e5e7eb" }}
               />
               <Bar dataKey="pendapatan" fill="#16A34A" radius={[6, 6, 0, 0]} />
@@ -175,7 +181,7 @@ export default function FinancePage() {
               <XAxis dataKey="week" tick={{ fontSize: 11, fill: "#9CA3AF" }} tickLine={false} axisLine={false} />
               <YAxis tickFormatter={formatRupiah} tick={{ fontSize: 10, fill: "#9CA3AF" }} tickLine={false} axisLine={false} width={65} />
               <Tooltip
-                formatter={(v: any, name: any) => [`Rp ${Number(v).toLocaleString("id-ID")}`, name === "bulanIni" ? "Bulan Ini" : "Bulan Lalu"]}
+                formatter={(v, name) => [`Rp ${Number(v).toLocaleString("id-ID")}`, name === "bulanIni" ? "Bulan Ini" : "Bulan Lalu"]}
                 contentStyle={{ borderRadius: "12px", border: "1px solid #e5e7eb" }}
               />
               <Line type="monotone" dataKey="bulanIni" stroke="#16A34A" strokeWidth={2.5} dot={false} />
@@ -243,7 +249,7 @@ export default function FinancePage() {
               <Pie data={data.paymentData} cx="50%" cy="50%" innerRadius={45} outerRadius={70} paddingAngle={3} dataKey="value">
                 {data.paymentData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
               </Pie>
-              <Tooltip formatter={(v: any) => [`${v}%`, "Porsi"]} contentStyle={{ borderRadius: "12px", border: "1px solid #e5e7eb" }} />
+              <Tooltip formatter={(v) => [`${v}%`, "Porsi"]} contentStyle={{ borderRadius: "12px", border: "1px solid #e5e7eb" }} />
             </PieChart>
           </ResponsiveContainer>
           <div className="space-y-2 mt-3">

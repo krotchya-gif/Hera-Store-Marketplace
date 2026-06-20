@@ -1,8 +1,10 @@
 "use client";
 
-import { useState, useEffect, useTransition } from "react";
+import { useState, useEffect, useCallback, useTransition } from "react";
 import StatusBadge from "@/components/admin/StatusBadge";
 import { Search, X, ChevronLeft, ChevronRight } from "lucide-react";
+import { formatRp } from "@/utils/format";
+import { createClient } from "@/utils/supabase/client";
 
 interface CustomerProfile {
   id: string;
@@ -26,6 +28,28 @@ function CustomerDetailModal({
   onStatusChange: () => void;
 }) {
   const [isPending, startTransition] = useTransition();
+  const [customerOrders, setCustomerOrders] = useState<{ order_number: string; total: number; status: string; created_at: string }[]>([]);
+  const [ordersLoading, setOrdersLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchOrders = async () => {
+      try {
+        const supabase = createClient();
+        const { data } = await supabase
+          .from("orders")
+          .select("order_number, total, status, created_at")
+          .eq("user_id", customer.id)
+          .order("created_at", { ascending: false })
+          .limit(5);
+        setCustomerOrders(data ?? []);
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setOrdersLoading(false);
+      }
+    };
+    fetchOrders();
+  }, [customer.id]);
 
   const handleToggleStatus = async () => {
     const nextStatus = customer.status === "diblokir" ? "aktif" : "diblokir";
@@ -100,6 +124,28 @@ function CustomerDetailModal({
               {customer.status === "diblokir" ? "✅ Aktifkan Akun" : "🚫 Blokir Akun"}
             </button>
           </div>
+
+          {/* Order History */}
+          <div className="pt-2">
+            <h4 className="text-sm font-semibold text-gray-700 mb-2">📋 Riwayat Belanja</h4>
+            {ordersLoading ? (
+              <div className="text-center py-4"><div className="w-5 h-5 border-2 border-green-200 border-t-green-600 rounded-full animate-spin mx-auto" /></div>
+            ) : customerOrders.length === 0 ? (
+              <p className="text-xs text-gray-400 text-center py-4">Belum ada transaksi.</p>
+            ) : (
+              <div className="space-y-2">
+                {customerOrders.map((o, i) => (
+                  <div key={i} className="flex items-center justify-between bg-gray-50 rounded-xl p-3">
+                    <div>
+                      <p className="text-xs font-medium text-gray-900 font-mono">#{o.order_number}</p>
+                      <p className="text-xs text-gray-500">{new Date(o.created_at).toLocaleDateString("id-ID")}</p>
+                    </div>
+                    <span className="text-xs font-semibold text-green-700">{formatRp(o.total)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -120,9 +166,10 @@ export default function CustomersPage() {
   });
 
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerProfile | null>(null);
-  const [isPending, startTransition] = useTransition();
+  const [customerTotals, setCustomerTotals] = useState<Record<string, number>>({});
+  const [, startTransition] = useTransition();
 
-  const fetchCustomers = async () => {
+  const fetchCustomers = useCallback(async () => {
     setIsLoading(true);
     try {
       const params = new URLSearchParams({
@@ -138,17 +185,34 @@ export default function CustomersPage() {
         if (data.stats) {
           setStats(data.stats);
         }
+        // Fetch total spent for displayed customers
+        if (data.data?.length > 0) {
+          const ids = data.data.map((c: CustomerProfile) => c.id);
+          const supabase = createClient();
+          const { data: orders } = await supabase
+            .from("orders")
+            .select("user_id, total")
+            .in("user_id", ids)
+            .eq("payment_status", "lunas");
+          const totals: Record<string, number> = {};
+          for (const o of orders ?? []) {
+            totals[o.user_id] = (totals[o.user_id] || 0) + (o.total || 0);
+          }
+          setCustomerTotals(totals);
+        }
       }
     } catch {
       console.error("Failed to fetch customers");
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [currentPage, search]);
 
   useEffect(() => {
-    fetchCustomers();
-  }, [currentPage, search]);
+    startTransition(() => {
+      fetchCustomers();
+    });
+  }, [fetchCustomers]);
 
   const handleToggleBlock = async (id: string, currentStatus: string) => {
     const nextStatus = currentStatus === "diblokir" ? "aktif" : "diblokir";
@@ -219,6 +283,7 @@ export default function CustomersPage() {
                 <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500">Pelanggan</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 hidden md:table-cell">No. HP</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 hidden lg:table-cell">Bergabung</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500">Total Belanja</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500">Status</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500">Aksi</th>
               </tr>
@@ -255,6 +320,9 @@ export default function CustomersPage() {
                       </td>
                       <td className="px-4 py-3.5 hidden lg:table-cell">
                         <span className="text-xs text-gray-500">{new Date(customer.created_at).toLocaleDateString("id-ID")}</span>
+                      </td>
+                      <td className="px-4 py-3.5">
+                        <span className="text-xs font-semibold text-gray-900">{customerTotals[customer.id] ? formatRp(customerTotals[customer.id]) : "-"}</span>
                       </td>
                       <td className="px-4 py-3.5">
                         <StatusBadge status={customer.status} />

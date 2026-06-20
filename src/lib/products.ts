@@ -2,8 +2,6 @@
 import { createClient } from "@/utils/supabase/server";
 import type { Product, Category, Review, ProductFilters, PaginatedResult } from "@/types/database";
 
-export const formatRp = (n: number) => `Rp ${n.toLocaleString("id-ID")}`;
-
 export const getDiscountPercent = (price: number, discountPrice: number | null) => {
   if (!discountPrice || discountPrice >= price) return null;
   return Math.round(((price - discountPrice) / price) * 100);
@@ -85,6 +83,22 @@ export async function getCategoryBySlug(slug: string): Promise<Category | null> 
   return data;
 }
 
+export async function getSubcategoriesOfCategory(parentId: string): Promise<Category[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("categories")
+    .select("*")
+    .eq("parent_id", parentId)
+    .eq("is_active", true)
+    .order("sort_order");
+
+  if (error) {
+    console.error("[getSubcategoriesOfCategory]", error);
+    return [];
+  }
+  return data ?? [];
+}
+
 // ─── Products ─────────────────────────────────────────────────────────────────
 
 export async function getProducts(filters: ProductFilters = {}): Promise<PaginatedResult<Product>> {
@@ -107,10 +121,23 @@ export async function getProducts(filters: ProductFilters = {}): Promise<Paginat
     )
     .eq("is_active", true);
 
-  // Filter by category slug (join)
+  // Filter by category slug (hierarchical)
   if (categorySlug) {
     const cat = await getCategoryBySlug(categorySlug);
-    if (cat) query = query.eq("category_id", cat.id);
+    if (cat) {
+      const { data: subcats } = await supabase
+        .from("categories")
+        .select("id")
+        .eq("parent_id", cat.id)
+        .eq("is_active", true);
+
+      if (subcats && subcats.length > 0) {
+        const catIds = [cat.id, ...subcats.map((s) => s.id)];
+        query = query.in("category_id", catIds);
+      } else {
+        query = query.eq("category_id", cat.id);
+      }
+    }
   }
 
   // Search
@@ -195,7 +222,11 @@ export async function getFlashSaleProducts(): Promise<Product[]> {
     console.error("[getFlashSaleProducts] Error:", error);
     return [];
   }
-  return data.map((d: any) => ({
+  return (data as unknown as {
+    flash_price: number;
+    flash_stock: number;
+    products: unknown;
+  }[]).map((d) => ({
     ...(d.products as Product),
     discount_price: Number(d.flash_price),
     flash_stock: d.flash_stock,

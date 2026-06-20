@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useTransition } from "react";
+import { useState, useEffect, useCallback, useTransition } from "react";
 import StatusBadge from "@/components/admin/StatusBadge";
 import { STORE_NAME } from "@/utils/storeConfig";
 import {
@@ -20,7 +20,6 @@ import {
 } from "lucide-react";
 import type { Product, Category } from "@/types/database";
 
-const CATEGORY_COLORS = ["Semua", "Perawatan Tubuh", "Perawatan Rumah", "Kesehatan", "Kecantikan", "Elektronik", "Lainnya"];
 const STATUS_FILTERS = ["Semua", "Aktif", "Nonaktif"];
 
 // ─── Product Form Modal ───────────────────────────────────────────────────────
@@ -52,25 +51,18 @@ function ProductFormModal({
     is_active: editProduct?.is_active ?? true,
   });
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
-  const [uploadingFiles, setUploadingFiles] = useState<File[]>([]);
   const [uploadedImages, setUploadedImages] = useState<string[]>(editProduct?.product_images?.map((img) => img.url) ?? []);
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [isUploading, setIsUploading] = useState(false);
 
-  const handleUploadFiles = async (files: FileList | null) => {
-    if (!files || files.length === 0) return;
+  const uploadFiles = async (files: File[], productId: string) => {
     setIsUploading(true);
-    const fileArray = Array.from(files);
-
-    for (const file of fileArray) {
+    for (const file of files) {
       const formData = new FormData();
       formData.append("file", file);
-      formData.append("productId", editProduct?.id || "temp");
-
+      formData.append("productId", productId);
       try {
-        const res = await fetch("/api/admin/upload", {
-          method: "POST",
-          body: formData,
-        });
+        const res = await fetch("/api/admin/upload", { method: "POST", body: formData });
         if (res.ok) {
           const data = await res.json();
           setUploadedImages((prev) => [...prev, data.url]);
@@ -80,6 +72,19 @@ function ProductFormModal({
       }
     }
     setIsUploading(false);
+  };
+
+  const handleUploadFiles = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const fileArray = Array.from(files);
+
+    if (editProduct?.id) {
+      // Editing existing product — upload immediately
+      await uploadFiles(fileArray, editProduct.id);
+    } else {
+      // Creating new product — queue files for later upload
+      setPendingFiles((prev) => [...prev, ...fileArray]);
+    }
   };
 
   const handleSubmit = async (isDraft = false) => {
@@ -99,6 +104,7 @@ function ProductFormModal({
           weight_gram: form.weight_gram ? parseInt(form.weight_gram) : null,
           slug,
           is_active: isDraft ? false : form.is_active,
+          images: editProduct ? undefined : uploadedImages,
         };
 
         const url = editProduct ? `/api/admin/products/${editProduct.id}` : `/api/admin/products`;
@@ -111,6 +117,15 @@ function ProductFormModal({
         });
 
         if (!res.ok) throw new Error("Gagal menyimpan produk");
+
+        // Upload pending files for new products
+        if (!editProduct && pendingFiles.length > 0) {
+          const savedProduct = await res.clone().json();
+          if (savedProduct?.id) {
+            await uploadFiles(pendingFiles, savedProduct.id);
+            setPendingFiles([]);
+          }
+        }
 
         setMessage({ type: "success", text: isDraft ? "Draft tersimpan!" : "Produk berhasil dipublish!" });
         setTimeout(() => { onSuccess(); onClose(); }, 1200);
@@ -304,7 +319,7 @@ function ProductFormModal({
             <label className="border-2 border-dashed border-gray-200 rounded-2xl p-8 text-center hover:border-green-300 hover:bg-green-50/30 cursor-pointer transition-colors block">
               <Upload className="w-8 h-8 text-gray-300 mx-auto mb-2" />
               <p className="text-sm text-gray-500 font-medium">
-                {isUploading ? "Mengupload..." : "Drag & drop foto di sini"}
+                {isUploading ? "Mengupload..." : pendingFiles.length > 0 ? `${pendingFiles.length} file menunggu upload...` : "Drag & drop foto di sini"}
               </p>
               <p className="text-xs text-gray-400 mt-1">Maks. 5 foto, maks. 2MB per foto (JPG, PNG, WebP)</p>
               <input
@@ -320,13 +335,17 @@ function ProductFormModal({
                   <span className="flex items-center gap-2">
                     <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Uploading...
                   </span>
-                ) : "Pilih File"}
+                ) : pendingFiles.length > 0 ? `${pendingFiles.length} file tertunda` : "Pilih File"}
               </div>
             </label>
-            <p className="text-[10px] text-gray-400 mt-2">
-              ⚠️ Catatan: Upload foto setelah produk dibuat (simpan produk dulu, lalu upload foto).
-              {!editProduct && " Foto akan tersimpan setelah produk di-publish dan di-edit kembali."}
-            </p>
+            {pendingFiles.length > 0 && (
+              <p className="text-[10px] text-green-600 mt-2">✓ File akan otomatis diupload setelah produk berhasil dipublish.</p>
+            )}
+            {pendingFiles.length === 0 && (
+              <p className="text-[10px] text-gray-400 mt-2">
+                ⚠️ Untuk produk baru, file akan diupload otomatis setelah produk berhasil dibuat.
+              </p>
+            )}
           </div>
         </div>
 
@@ -370,16 +389,16 @@ export default function ProductsPage() {
   const [editProduct, setEditProduct] = useState<Product | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
   const [activeToggles, setActiveToggles] = useState<Record<string, boolean>>({});
-  const [isPending, startTransition] = useTransition();
+  const [, startTransition] = useTransition();
 
-  const fetchProducts = async () => {
+  const fetchProducts = useCallback(async () => {
     setIsLoading(true);
     try {
       const params = new URLSearchParams({
         page: currentPage.toString(),
         pageSize: "20",
         ...(search && { search }),
-        ...(selectedCategory !== "Semua" && { category: selectedCategory }),
+        ...(selectedCategory !== "Semua" && { categoryId: categories.find(c => c.name === selectedCategory)?.id || selectedCategory }),
         ...(selectedStatus !== "Semua" && { status: selectedStatus.toLowerCase() }),
       });
       const res = await fetch(`/api/admin/products?${params}`);
@@ -393,18 +412,27 @@ export default function ProductsPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [currentPage, search, selectedCategory, selectedStatus]);
 
-  const fetchCategories = async () => {
+  const fetchCategories = useCallback(async () => {
     const res = await fetch("/api/admin/categories");
     if (res.ok) {
       const data = await res.json();
       setCategories(data ?? []);
     }
-  };
+  }, []);
 
-  useEffect(() => { fetchProducts(); }, [search, selectedCategory, selectedStatus, currentPage]);
-  useEffect(() => { fetchCategories(); }, []);
+  useEffect(() => {
+    startTransition(() => {
+      fetchProducts();
+    });
+  }, [fetchProducts]);
+
+  useEffect(() => {
+    startTransition(() => {
+      fetchCategories();
+    });
+  }, [fetchCategories]);
 
   const toggleStatus = async (id: string, currentActive: boolean) => {
     setActiveToggles((prev) => ({ ...prev, [id]: !currentActive }));
@@ -423,6 +451,80 @@ export default function ProductsPage() {
     startTransition(async () => {
       await fetch(`/api/admin/products/${id}`, { method: "DELETE" });
       fetchProducts();
+    });
+  };
+
+  const handleDuplicate = async (prod: Product) => {
+    if (!confirm(`Duplikat produk "${prod.name}"?`)) return;
+    startTransition(async () => {
+      try {
+        const payload = {
+          name: `${prod.name} (Copy)`,
+          sku: prod.sku ? `${prod.sku}-copy` : null,
+          brand: prod.brand,
+          description: prod.description,
+          category_id: prod.category_id,
+          price: prod.price,
+          discount_price: prod.discount_price,
+          stock: prod.stock,
+          unit: prod.unit,
+          weight_gram: prod.weight_gram,
+          slug: `${prod.slug}-copy-${Date.now()}`,
+          is_active: false,
+          images: prod.product_images?.map((img) => img.url) || [],
+        };
+        const res = await fetch("/api/admin/products", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (res.ok) {
+          fetchProducts();
+        } else {
+          alert("Gagal menduplikat produk");
+        }
+      } catch (err) {
+        console.error(err);
+        alert("Gagal menduplikat produk");
+      }
+    });
+  };
+
+  const handleBulkStatus = async (isActive: boolean) => {
+    if (!confirm(`Ubah status ${selected.length} produk menjadi ${isActive ? "Aktif" : "Nonaktif"}?`)) return;
+    startTransition(async () => {
+      try {
+        await Promise.all(
+          selected.map((id) =>
+            fetch(`/api/admin/products/${id}/toggle`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ is_active: isActive }),
+            })
+          )
+        );
+        setSelected([]);
+        fetchProducts();
+      } catch (err) {
+        console.error(err);
+      }
+    });
+  };
+
+  const handleBulkDelete = async () => {
+    if (!confirm(`Hapus ${selected.length} produk? Tindakan ini tidak bisa dibatalkan.`)) return;
+    startTransition(async () => {
+      try {
+        await Promise.all(
+          selected.map((id) =>
+            fetch(`/api/admin/products/${id}`, { method: "DELETE" })
+          )
+        );
+        setSelected([]);
+        fetchProducts();
+      } catch (err) {
+        console.error(err);
+      }
     });
   };
 
@@ -477,7 +579,10 @@ export default function ProductsPage() {
                 onChange={(e) => { setSelectedCategory(e.target.value); setCurrentPage(1); }}
                 className="border border-gray-200 rounded-xl pl-9 pr-8 py-2 text-sm focus:outline-none focus:border-green-400 bg-white appearance-none cursor-pointer"
               >
-                {CATEGORY_COLORS.map((c) => <option key={c}>{c}</option>)}
+                <option value="Semua">Semua Kategori</option>
+                {categories.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
               </select>
             </div>
           </div>
@@ -500,8 +605,24 @@ export default function ProductsPage() {
         <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 flex items-center gap-3">
           <span className="text-sm text-green-700 font-medium">{selected.length} produk dipilih</span>
           <div className="flex gap-2 ml-auto">
-            <button className="text-xs border border-gray-200 bg-white px-3 py-1.5 rounded-lg font-medium text-gray-600 hover:bg-gray-50">Nonaktifkan</button>
-            <button className="text-xs bg-red-50 border border-red-200 px-3 py-1.5 rounded-lg font-medium text-red-600 hover:bg-red-100">Hapus</button>
+            <button
+              onClick={() => handleBulkStatus(false)}
+              className="text-xs border border-gray-200 bg-white px-3 py-1.5 rounded-lg font-medium text-gray-600 hover:bg-gray-50"
+            >
+              Nonaktifkan
+            </button>
+            <button
+              onClick={() => handleBulkStatus(true)}
+              className="text-xs border border-green-200 bg-green-600 text-white px-3 py-1.5 rounded-lg font-medium hover:bg-green-700"
+            >
+              Aktifkan
+            </button>
+            <button
+              onClick={handleBulkDelete}
+              className="text-xs bg-red-50 border border-red-200 px-3 py-1.5 rounded-lg font-medium text-red-600 hover:bg-red-100"
+            >
+              Hapus
+            </button>
           </div>
         </div>
       )}
@@ -602,6 +723,7 @@ export default function ProductsPage() {
                         </button>
                         <button
                           id={`btn-duplicate-product-${product.id}`}
+                          onClick={() => handleDuplicate(product)}
                           className="w-7 h-7 rounded-lg hover:bg-gray-100 text-gray-400 flex items-center justify-center"
                           title="Duplikat"
                         >

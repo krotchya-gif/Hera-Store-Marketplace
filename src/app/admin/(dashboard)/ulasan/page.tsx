@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useTransition } from "react";
+import { useState, useEffect, useCallback, useTransition } from "react";
 import { Star } from "lucide-react";
 import type { Review } from "@/types/database";
 
@@ -10,7 +10,7 @@ export default function ReviewsPage() {
   const [filter, setFilter] = useState("Semua");
   const [reviews, setReviews] = useState<Review[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [isPending, startTransition] = useTransition();
+  const [, startTransition] = useTransition();
 
   const [stats, setStats] = useState({
     average: 0,
@@ -18,7 +18,7 @@ export default function ReviewsPage() {
     breakdown: { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 } as Record<number, number>,
   });
 
-  const fetchReviews = async () => {
+  const fetchReviews = useCallback(async () => {
     setIsLoading(true);
     try {
       let isVisibleParam = undefined;
@@ -44,11 +44,13 @@ export default function ReviewsPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [filter]);
 
   useEffect(() => {
-    fetchReviews();
-  }, [filter]);
+    startTransition(() => {
+      fetchReviews();
+    });
+  }, [fetchReviews]);
 
   const toggleStatus = async (id: string, currentVisible: boolean) => {
     startTransition(async () => {
@@ -109,6 +111,27 @@ export default function ReviewsPage() {
             {stats.breakdown[1] + stats.breakdown[2] + stats.breakdown[3]}
           </p>
           <p className="text-xs text-gray-400 mt-2">Rating Kurang (≤3★)</p>
+        </div>
+      </div>
+
+      {/* Star Breakdown Progress Bars */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+        <h3 className="text-sm font-semibold text-gray-700 mb-3">Distribusi Rating</h3>
+        <div className="space-y-2">
+          {[5, 4, 3, 2, 1].map((stars) => {
+            const count = stats.breakdown?.[stars] ?? 0;
+            const pct = stats.total > 0 ? (count / stats.total) * 100 : 0;
+            return (
+              <div key={stars} className="flex items-center gap-2">
+                <span className="text-xs text-gray-500 w-4 text-right">{stars}</span>
+                <span className="text-yellow-400 text-xs">★</span>
+                <div className="flex-1 h-3 bg-gray-100 rounded-full overflow-hidden">
+                  <div className="h-full bg-yellow-400 rounded-full transition-all" style={{ width: `${pct}%` }} />
+                </div>
+                <span className="text-xs text-gray-400 w-8 text-right">{count}</span>
+              </div>
+            );
+          })}
         </div>
       </div>
 

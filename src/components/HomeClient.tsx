@@ -16,10 +16,11 @@ import {
   Star,
   Zap,
   Heart,
+  X,
 } from "lucide-react";
 import type { Product, Category } from "@/types/database";
 
-const formatRp = (n: number) => `Rp ${n.toLocaleString("id-ID")}`;
+import { formatRp } from "@/utils/format";
 
 export function getProductEmoji(slug: string | null, categoryIcon?: string | null): string {
   if (!slug) return categoryIcon || "📦";
@@ -70,7 +71,7 @@ function useCountdown(targetDate: string | null) {
 // ─── Hero Banner ──────────────────────────────────────────────────
 function HeroBanner() {
   return (
-    <section className="bg-gradient-to-r from-green-600 via-green-700 to-green-800 relative overflow-hidden">
+    <section className="bg-gradient-to-r from-green-600 via-green-700 to-green-800 relative overflow-hidden animate-fade-in-up">
       <div className="absolute top-0 right-0 w-64 md:w-96 h-64 md:h-96 bg-white/5 rounded-full translate-x-1/3 -translate-y-1/3" />
       <div className="absolute bottom-0 left-1/4 w-32 md:w-48 h-32 md:h-48 bg-white/5 rounded-full translate-y-1/2" />
 
@@ -129,7 +130,7 @@ function TrustBar() {
     { icon: <Headphones className="w-5 h-5 text-green-600" />, title: "Support 24/7", sub: "Siap membantu" },
   ];
   return (
-    <section className="bg-white border-b border-gray-100 py-4">
+    <section className="bg-white border-b border-gray-100 py-4 animate-fade-in-up delay-100">
       <div className="max-w-7xl mx-auto px-4 sm:px-6">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-0 md:divide-x divide-gray-100">
           {items.map((item) => (
@@ -159,22 +160,20 @@ function ProductCard({
   showDiscount?: boolean;
   stats?: { average: number; count: number; sold: number };
 }) {
-  const [wished, setWished] = useState(false);
-  const [added, setAdded] = useState(false);
-
-  useEffect(() => {
+  const [wished, setWished] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
     try {
       const wishStr = localStorage.getItem("hera_wishlist");
       if (wishStr) {
         const wish = JSON.parse(wishStr);
-        if (Array.isArray(wish) && wish.includes(product.id)) {
-          setWished(true);
-        }
+        return Array.isArray(wish) && wish.includes(product.id);
       }
     } catch (e) {
       console.error(e);
     }
-  }, [product.id]);
+    return false;
+  });
+  const [added, setAdded] = useState(false);
 
   const emoji = getProductEmoji(product.slug, product.categories?.icon);
   const finalPrice = product.discount_price ?? product.price;
@@ -194,10 +193,10 @@ function ProductCard({
       }
 
       const cartStr = localStorage.getItem("hera_cart");
-      let cart = cartStr ? JSON.parse(cartStr) : [];
+      let cart: { id: string; name: string; price: number; originalPrice: number | null; quantity: number; emoji: string; variant: unknown; stock: number; slug: string | null; }[] = cartStr ? JSON.parse(cartStr) : [];
       if (!Array.isArray(cart)) cart = [];
 
-      const existingIndex = cart.findIndex((item: any) => item.id === product.id && !item.variant);
+      const existingIndex = cart.findIndex((item) => item.id === product.id && !item.variant);
       if (existingIndex > -1) {
         cart[existingIndex].quantity = Math.min(product.stock, cart[existingIndex].quantity + 1);
       } else {
@@ -276,7 +275,7 @@ function ProductCard({
             onClick={handleAdd}
             className={`absolute bottom-2 left-2 right-2 py-1.5 rounded-lg text-xs font-semibold transition-all ${added
                 ? "bg-green-600 text-white opacity-100"
-                : "bg-white text-green-700 border border-green-200 opacity-0 group-hover:opacity-100"
+                : "bg-white text-green-700 border border-green-200 md:opacity-0 md:group-hover:opacity-100 opacity-100"
               }`}
           >
             {added ? "✓ Ditambahkan!" : "+ Keranjang"}
@@ -342,11 +341,11 @@ interface HomeClientProps {
 }
 
 export default function HomeClient({ categories, flashSaleProducts, bestSellerProducts, promoProducts, flashSaleEnd, productStats = {} }: HomeClientProps) {
-  const [showAllFlash, setShowAllFlash] = useState(false);
+  const [showAllCategories, setShowAllCategories] = useState(false);
   const countdown = useCountdown(flashSaleEnd ?? null);
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 pb-16 md:pb-0">
       <Navbar />
 
       <HeroBanner />
@@ -359,11 +358,12 @@ export default function HomeClient({ categories, flashSaleProducts, bestSellerPr
         <section>
           <SectionHeader title="Kategori Populer" subtitle="Temukan produk sesuai kebutuhanmu" />
           <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
-            {categories.map((cat) => (
+            {categories.slice(0, 6).map((cat, i) => (
               <Link
                 key={cat.slug}
                 href={`/kategori/${cat.slug}`}
-                className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 md:p-4 flex flex-col items-center gap-2 hover:shadow-md hover:-translate-y-0.5 hover:border-green-200 transition-all group"
+                className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 md:p-4 flex flex-col items-center gap-2 hover:shadow-md hover:-translate-y-0.5 hover:border-green-200 transition-all group animate-scale-in"
+                style={{ animationDelay: `${(i + 1) * 80}ms` }}
               >
                 <span className="text-2xl md:text-3xl">{cat.icon || "📦"}</span>
                 <p className="text-xs font-medium text-gray-700 text-center leading-tight group-hover:text-green-700">
@@ -373,11 +373,47 @@ export default function HomeClient({ categories, flashSaleProducts, bestSellerPr
               </Link>
             ))}
           </div>
+          {categories.length > 6 && (
+            <button
+              onClick={() => setShowAllCategories(true)}
+              className="mt-3 w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed border-green-300 text-green-700 font-medium text-sm hover:bg-green-50 transition-colors"
+            >
+              Tampilkan Semua Kategori ({categories.length})
+            </button>
+          )}
         </section>
+
+        {/* All Categories Modal */}
+        {showAllCategories && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowAllCategories(false)} />
+            <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[80vh] overflow-y-auto p-6 z-10">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-semibold text-gray-900 text-lg">Semua Kategori</h3>
+                <button onClick={() => setShowAllCategories(false)} className="w-8 h-8 rounded-lg hover:bg-gray-100 flex items-center justify-center">
+                  <X className="w-5 h-5 text-gray-500" />
+                </button>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                {categories.map((cat) => (
+                  <Link
+                    key={cat.slug}
+                    href={`/kategori/${cat.slug}`}
+                    onClick={() => setShowAllCategories(false)}
+                    className="flex flex-col items-center gap-2 p-4 bg-gray-50 rounded-xl hover:bg-green-50 hover:border-green-200 border border-transparent transition-all"
+                  >
+                    <span className="text-3xl">{cat.icon || "📦"}</span>
+                    <p className="text-xs font-medium text-gray-700 text-center">{cat.name}</p>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Flash Sale */}
         {flashSaleProducts.length > 0 && (
-          <section id="flash-sale" className="scroll-mt-20">
+          <section id="flash-sale" className="scroll-mt-20 animate-fade-in-up delay-200">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3 flex-wrap">
                 <div className="flex items-center gap-2">
@@ -398,7 +434,7 @@ export default function HomeClient({ categories, flashSaleProducts, bestSellerPr
                   ))}
                 </div>
               </div>
-              <Link href="/promo" className="flex items-center gap-1 text-red-500 text-xs md:text-sm font-semibold hover:text-red-600">
+              <Link href="/kategori/semua?sort=popular" className="flex items-center gap-1 text-red-500 text-xs md:text-sm font-semibold hover:text-red-600">
                 Lihat Semua <ChevronRight className="w-4 h-4" />
               </Link>
             </div>
@@ -415,7 +451,7 @@ export default function HomeClient({ categories, flashSaleProducts, bestSellerPr
 
         {/* Promo Utama */}
         {promoProducts && promoProducts.length > 0 && (
-          <section id="promo" className="scroll-mt-20">
+          <section id="promo" className="scroll-mt-20 animate-fade-in-up delay-300">
             <SectionHeader title="Promo Terbatas" subtitle="Diskon spesial khusus minggu ini" />
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 md:gap-4">
               {promoProducts.map((product) => (
@@ -426,7 +462,7 @@ export default function HomeClient({ categories, flashSaleProducts, bestSellerPr
         )}
 
         {/* Best Sellers */}
-        <section id="terlaris" className="scroll-mt-20">
+        <section id="terlaris" className="scroll-mt-20 animate-fade-in-up delay-300">
           <SectionHeader title="Produk Terlaris" subtitle="Pilihan favorit ribuan pelanggan" />
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 md:gap-4">
             {bestSellerProducts.map((product) => (
@@ -436,7 +472,7 @@ export default function HomeClient({ categories, flashSaleProducts, bestSellerPr
         </section>
 
         {/* CTA Banner */}
-        <section>
+        <section className="animate-fade-in-up delay-200">
           <div className="bg-gradient-to-r from-green-600 to-green-700 rounded-2xl p-6 md:p-8 text-white relative overflow-hidden">
             <div className="absolute top-0 right-0 w-48 h-48 bg-white/10 rounded-full translate-x-1/4 -translate-y-1/4" />
             <div className="relative z-10 flex flex-col md:flex-row items-center gap-4 md:gap-8">

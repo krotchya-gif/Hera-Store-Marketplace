@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAllVouchers, createVoucher } from "@/lib/admin";
-import { verifyAdminRole } from "@/lib/auth-utils";
+import { verifyAdminRole, handleAdminError } from "@/lib/auth-utils";
 
 export async function GET() {
   try {
@@ -8,8 +8,7 @@ export async function GET() {
     const vouchers = await getAllVouchers();
     return NextResponse.json(vouchers);
   } catch (error) {
-    console.error("[API GET Vouchers]", error);
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    return handleAdminError(error);
   }
 }
 
@@ -23,7 +22,6 @@ export async function POST(request: NextRequest) {
     }
     return NextResponse.json(voucher);
   } catch (error) {
-    console.error("[API POST Voucher]", error);
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    return handleAdminError(error);
   }
 }

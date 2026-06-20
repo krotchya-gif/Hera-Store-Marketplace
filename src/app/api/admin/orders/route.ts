@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAllOrders, getOrderStats } from "@/lib/orders";
-import { verifyAdminRole } from "@/lib/auth-utils";
+import { verifyAdminRole, handleAdminError } from "@/lib/auth-utils";
+import type { OrderStatus } from "@/types/database";
 
 export async function GET(request: NextRequest) {
   try {
     await verifyAdminRole();
     const { searchParams } = new URL(request.url);
-    const status = (searchParams.get("status") as any) || undefined;
+    const status = (searchParams.get("status") as OrderStatus) || undefined;
     const search = searchParams.get("search") || undefined;
     const dateFrom = searchParams.get("dateFrom") || undefined;
     const dateTo = searchParams.get("dateTo") || undefined;
@@ -26,7 +27,6 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ ...result, stats });
   } catch (error) {
-    console.error("[API GET Orders]", error);
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    return handleAdminError(error);
   }
 }

@@ -1,7 +1,6 @@
 -- =============================================
--- Hera Store MARKETPLACE
--- Supabase Database Schema
--- Run this in Supabase SQL Editor
+-- HERA STORE MARKETPLACE — Full Schema
+-- Consolidated migration: tables, RLS, functions, triggers, storage
 -- =============================================
 
 -- Enable UUID extension
@@ -71,7 +70,7 @@ create trigger on_auth_user_created
   for each row execute procedure public.handle_new_user();
 
 -- =============================================
--- CATEGORIES
+-- CATEGORIES (hierarchical via parent_id)
 -- =============================================
 create table if not exists public.categories (
   id uuid primary key default uuid_generate_v4(),
@@ -93,16 +92,6 @@ create policy "Admins can manage categories" on public.categories
   for all to authenticated
   using (public.has_role(auth.uid(), array['super_admin', 'admin']))
   with check (public.has_role(auth.uid(), array['super_admin', 'admin']));
-
--- Seed categories
-insert into public.categories (name, slug, icon) values
-  ('Perawatan Tubuh', 'perawatan-tubuh', '🧴'),
-  ('Perawatan Rumah', 'perawatan-rumah', '🧹'),
-  ('Kesehatan', 'kesehatan', '💊'),
-  ('Kecantikan', 'kecantikan', '💄'),
-  ('Elektronik', 'elektronik', '🔌'),
-  ('Lainnya', 'lainnya', '📦')
-on conflict (slug) do nothing;
 
 -- =============================================
 -- PRODUCTS
@@ -227,7 +216,7 @@ begin
 end;
 $$;
 
--- Auto-generate order number
+-- Auto-generate order number with HS prefix
 create or replace function public.generate_order_number()
 returns text language plpgsql as $$
 declare
@@ -265,6 +254,47 @@ create policy "Users can view own order items" on public.order_items for select 
   using (exists (select 1 from public.orders where id = order_id and user_id = auth.uid()));
 create policy "Auth users can insert order items" on public.order_items for insert to authenticated
   with check (true);
+
+-- =============================================
+-- SHIPPING ADDRESSES
+-- =============================================
+create table if not exists public.shipping_addresses (
+  id uuid primary key default uuid_generate_v4(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  label text not null default 'Rumah',
+  name text not null,
+  phone text not null,
+  address text not null,
+  city text not null,
+  province text not null,
+  postal_code text not null,
+  is_default boolean default false,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+alter table public.shipping_addresses enable row level security;
+
+create policy "Users can view own addresses"
+  on public.shipping_addresses for select to authenticated
+  using (user_id = auth.uid());
+
+create policy "Users can insert own addresses"
+  on public.shipping_addresses for insert to authenticated
+  with check (user_id = auth.uid());
+
+create policy "Users can update own addresses"
+  on public.shipping_addresses for update to authenticated
+  using (user_id = auth.uid())
+  with check (user_id = auth.uid());
+
+create policy "Users can delete own addresses"
+  on public.shipping_addresses for delete to authenticated
+  using (user_id = auth.uid());
+
+create policy "Admins can view all addresses"
+  on public.shipping_addresses for select to authenticated
+  using (public.has_role(auth.uid(), array['super_admin', 'admin', 'operator']));
 
 -- =============================================
 -- VOUCHERS
@@ -367,10 +397,35 @@ create policy "Admins can manage settings" on public.store_settings for all to a
   using (public.has_role(auth.uid(), array['super_admin', 'admin']))
   with check (public.has_role(auth.uid(), array['super_admin', 'admin']));
 
--- Seed default settings
-insert into public.store_settings (key, value) values
-  ('store_info', '{"name": "Hera Store", "email": "info@herastore.com", "phone": "+6281234567890", "city": "Jakarta Selatan", "description": "Marketplace produk rumah tangga premium."}'::jsonb),
-  ('shipping', '{"free_shipping": true, "free_shipping_min": 100000, "couriers": ["JNE", "J&T", "SiCepat"]}'::jsonb),
-  ('payment', '{"methods": ["Transfer Bank", "GoPay", "OVO", "Dana", "COD"], "payment_timeout_hours": 24}'::jsonb),
-  ('notifications', '{"new_order_email": true, "new_order_wa": true, "payment_email": true, "low_stock_threshold": 10}'::jsonb)
-on conflict (key) do nothing;
+-- =============================================
+-- STORAGE: Product Images Bucket
+-- =============================================
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('product-images', 'product-images', true, 2097152, '{image/jpeg,image/png,image/webp}')
+on conflict (id) do update set public = true;
+
+create policy "Admin can upload product images"
+on storage.objects for insert to authenticated
+with check (
+  bucket_id = 'product-images'
+  and exists (
+    select 1 from public.profiles
+    where id = auth.uid()
+    and role = any(array['super_admin', 'admin', 'operator'])
+  )
+);
+
+create policy "Public can view product images"
+on storage.objects for select to anon, authenticated
+using (bucket_id = 'product-images');
+
+create policy "Admin can delete product images"
+on storage.objects for delete to authenticated
+using (
+  bucket_id = 'product-images'
+  and exists (
+    select 1 from public.profiles
+    where id = auth.uid()
+    and role = any(array['super_admin', 'admin', 'operator'])
+  )
+);

@@ -1,8 +1,9 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { Bell, Search, Menu } from "lucide-react";
+import { Search, Menu } from "lucide-react";
 import { STORE_NAME } from "@/utils/storeConfig";
+import NotificationDropdown from "./NotificationDropdown";
 
 const pageTitles: Record<string, { title: string; breadcrumb: string[] }> = {
   "/admin": { title: "Dashboard", breadcrumb: ["Admin", "Dashboard"] },
@@ -89,14 +90,7 @@ export default function AdminTopbar({ onMenuToggle }: AdminTopbarProps) {
         </button>
 
         {/* Notifications */}
-        <button
-          id="btn-topbar-notifications"
-          className="relative w-9 h-9 bg-gray-50 border border-gray-200 rounded-xl flex items-center justify-center hover:bg-gray-100 text-gray-600 transition-colors"
-          aria-label="Notifikasi"
-        >
-          <Bell className="w-4 h-4" />
-          <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full ring-2 ring-white" />
-        </button>
+        <NotificationDropdown />
 
         {/* Avatar */}
         <div className="flex items-center gap-2">

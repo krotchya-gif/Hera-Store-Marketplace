@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
 import {
   LayoutDashboard,
@@ -57,7 +57,6 @@ interface AdminSidebarProps {
 
 export default function AdminSidebar({ isOpen, onClose }: AdminSidebarProps) {
   const pathname = usePathname();
-  const router = useRouter();
   const sidebarRef = useRef<HTMLDivElement>(null);
 
   // Close sidebar on route change (mobile)

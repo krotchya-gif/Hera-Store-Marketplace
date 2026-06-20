@@ -1,13 +1,22 @@
 // ─── Export Orders as CSV ──────────────────────────────────────
 import { NextResponse } from "next/server";
 import { getAllOrders } from "@/lib/orders";
-import { verifyAdminRole } from "@/lib/auth-utils";
+import { verifyAdminRole, handleAdminError } from "@/lib/auth-utils";
 
 export async function GET() {
   try {
     await verifyAdminRole();
 
-    const result = await getAllOrders({ page: 1, pageSize: 1000 });
+    const CHUNK_SIZE = 500;
+    const firstPage = await getAllOrders({ page: 1, pageSize: CHUNK_SIZE });
+    const totalCount = firstPage.count;
+    const totalPages = Math.ceil(totalCount / CHUNK_SIZE);
+
+    let allOrders = [...firstPage.data];
+    for (let page = 2; page <= totalPages; page++) {
+      const chunk = await getAllOrders({ page, pageSize: CHUNK_SIZE });
+      allOrders = [...allOrders, ...chunk.data];
+    }
 
     const headers = [
       "No. Pesanan",
@@ -24,7 +33,7 @@ export async function GET() {
       "No. Resi",
     ].join(",");
 
-    const rows = result.data.map((order) =>
+    const rows = allOrders.map((order) =>
       [
         order.order_number,
         new Date(order.created_at).toLocaleDateString("id-ID"),
@@ -49,8 +58,7 @@ export async function GET() {
         "Content-Disposition": `attachment; filename="orders-export-${new Date().toISOString().split("T")[0]}.csv"`,
       },
     });
-  } catch (error: any) {
-    console.error("[Export CSV Error]", error);
-    return NextResponse.json({ error: error?.message || "Export failed" }, { status: 500 });
+  } catch (error) {
+    return handleAdminError(error);
   }
 }

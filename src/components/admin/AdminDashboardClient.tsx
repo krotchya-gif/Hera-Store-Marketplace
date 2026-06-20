@@ -132,7 +132,7 @@ export default function AdminDashboardClient({ stats }: AdminDashboardClientProp
                 width={70}
               />
               <Tooltip
-                formatter={(value: any) => [
+                formatter={(value: unknown) => [
                   formatRpFull(Number(value)),
                   "Penjualan",
                 ]}
@@ -181,7 +181,7 @@ export default function AdminDashboardClient({ stats }: AdminDashboardClientProp
                     ))}
                   </Pie>
                   <Tooltip
-                    formatter={(value: any) => [formatRpFull(Number(value)), "Pendapatan"]}
+                    formatter={(value: unknown) => [formatRpFull(Number(value)), "Pendapatan"]}
                     contentStyle={{ borderRadius: "12px", border: "1px solid #e5e7eb" }}
                   />
                 </PieChart>

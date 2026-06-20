@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useTransition } from "react";
 import { Plus, Edit, Trash2, X, Check, AlertCircle, RefreshCw } from "lucide-react";
 
 interface CategoryItem {
@@ -153,6 +153,8 @@ export default function CategoriesPage() {
   const [editCategory, setEditCategory] = useState<CategoryItem | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
+  const [, startTransition] = useTransition();
+
   const fetchCategories = async () => {
     setIsLoading(true);
     try {
@@ -168,7 +170,11 @@ export default function CategoriesPage() {
     }
   };
 
-  useEffect(() => { fetchCategories(); }, []);
+  useEffect(() => {
+    startTransition(() => {
+      fetchCategories();
+    });
+  }, []);
 
   const handleDelete = async (id: string) => {
     if (!confirm("Nonaktifkan kategori ini? Produk dalam kategori ini tidak akan terhapus.")) return;

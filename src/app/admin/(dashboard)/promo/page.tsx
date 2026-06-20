@@ -1,12 +1,11 @@
 "use client";
 
 import { useState, useEffect, useTransition } from "react";
-import StatusBadge from "@/components/admin/StatusBadge";
 import { Plus, X, RefreshCcw, Check, AlertCircle } from "lucide-react";
 import { STORE_NAME } from "@/utils/storeConfig";
-import type { Voucher } from "@/types/database";
-
-const formatRp = (n: number) => `Rp ${n.toLocaleString("id-ID")}`;
+import { createClient } from "@/utils/supabase/client";
+import { formatRp } from "@/utils/format";
+import type { Voucher, FlashSale } from "@/types/database";
 
 function VoucherModal({
   onClose,
@@ -69,8 +68,8 @@ function VoucherModal({
           onSuccess();
           onClose();
         }, 1200);
-      } catch (error: any) {
-        setMessage({ type: "error", text: error.message || "Terjadi kesalahan." });
+      } catch (error) {
+        setMessage({ type: "error", text: error instanceof Error ? error.message : "Terjadi kesalahan." });
       }
     });
   };
@@ -230,7 +229,9 @@ export default function PromotionsPage() {
   const [vouchers, setVouchers] = useState<Voucher[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showVoucherModal, setShowVoucherModal] = useState(false);
-  const [isPending, startTransition] = useTransition();
+  const [flashSales, setFlashSales] = useState<FlashSale[]>([]);
+  const [isFlashLoading, setIsFlashLoading] = useState(true);
+  const [, startTransition] = useTransition();
 
   const fetchVouchers = async () => {
     setIsLoading(true);
@@ -248,7 +249,28 @@ export default function PromotionsPage() {
   };
 
   useEffect(() => {
-    fetchVouchers();
+    startTransition(() => {
+      fetchVouchers();
+    });
+  }, []);
+
+  // Fetch flash sales
+  useEffect(() => {
+    const fetchFlashSales = async () => {
+      try {
+        const supabase = createClient();
+        const { data } = await supabase
+          .from("flash_sales")
+          .select(`*, flash_sale_products(*)`)
+          .order("starts_at", { ascending: false });
+        setFlashSales(data ?? []);
+      } catch (e) {
+        console.error("Failed to fetch flash sales", e);
+      } finally {
+        setIsFlashLoading(false);
+      }
+    };
+    fetchFlashSales();
   }, []);
 
   const handleToggleVoucherStatus = async (id: string, currentActive: boolean) => {
@@ -359,6 +381,50 @@ export default function PromotionsPage() {
           onSuccess={fetchVouchers}
         />
       )}
+
+      {/* Flash Sale Section */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+          <div>
+            <h3 className="font-semibold text-gray-900">⏰ Flash Sale</h3>
+            <p className="text-xs text-gray-400">Daftar event flash sale</p>
+          </div>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-gray-50 border-b border-gray-100">
+                <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500">Nama Event</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500">Mulai</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500">Berakhir</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500">Produk</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500">Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {isFlashLoading ? (
+                <tr><td colSpan={5} className="text-center py-8"><div className="w-6 h-6 border-2 border-green-200 border-t-green-600 rounded-full animate-spin mx-auto" /></td></tr>
+              ) : flashSales.length === 0 ? (
+                <tr><td colSpan={5} className="text-center py-8 text-gray-400">Belum ada flash sale.</td></tr>
+              ) : (
+                flashSales.map((fs) => (
+                  <tr key={fs.id} className="hover:bg-gray-50/50">
+                    <td className="px-5 py-3.5"><span className="font-medium text-gray-900 text-xs">{fs.name}</span></td>
+                    <td className="px-4 py-3.5"><span className="text-xs text-gray-600">{new Date(fs.starts_at).toLocaleDateString("id-ID")}</span></td>
+                    <td className="px-4 py-3.5"><span className="text-xs text-gray-600">{new Date(fs.ends_at).toLocaleDateString("id-ID")}</span></td>
+                    <td className="px-4 py-3.5"><span className="text-xs text-gray-600">{fs.flash_sale_products?.length ?? 0} produk</span></td>
+                    <td className="px-4 py-3.5">
+                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${fs.is_active ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
+                        {fs.is_active ? "Aktif" : "Nonaktif"}
+                      </span>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   );
 }

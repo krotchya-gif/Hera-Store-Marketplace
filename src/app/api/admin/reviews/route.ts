@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAllReviews, getReviewStats } from "@/lib/admin";
-import { verifyAdminRole } from "@/lib/auth-utils";
+import { verifyAdminRole, handleAdminError } from "@/lib/auth-utils";
 
 export async function GET(request: NextRequest) {
   try {
@@ -21,7 +21,6 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ ...result, stats });
   } catch (error) {
-    console.error("[API GET Reviews]", error);
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    return handleAdminError(error);
   }
 }

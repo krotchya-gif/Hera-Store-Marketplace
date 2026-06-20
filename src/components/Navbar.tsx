@@ -1,10 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useTransition } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { STORE_NAME } from "@/utils/storeConfig";
-import { categories } from "@/utils/mockData";
 import { createClient } from "@/utils/supabase/client";
 import {
   Search,
@@ -15,6 +14,8 @@ import {
   Menu,
   X,
   ChevronDown,
+  Package,
+  Bell,
 } from "lucide-react";
 
 export default function Navbar() {
@@ -26,6 +27,40 @@ export default function Navbar() {
   const [categoryOpen, setCategoryOpen] = useState(false);
   const [wishlistCount, setWishlistCount] = useState(0);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [, startTransition] = useTransition();
+
+  interface NavbarCategory {
+    id: string;
+    name: string;
+    slug: string;
+    icon: string | null;
+    products?: { count: number }[];
+  }
+
+  const [navCategories, setNavCategories] = useState<NavbarCategory[]>([]);
+
+  useEffect(() => {
+    const fetchNavbarCategories = async () => {
+      try {
+        const supabase = createClient();
+        const { data, error } = await supabase
+          .from("categories")
+          .select("id, name, slug, icon, products(count)")
+          .eq("is_active", true)
+          .is("parent_id", null)
+          .order("sort_order");
+
+        if (!error && data) {
+          setNavCategories(data as unknown as NavbarCategory[]);
+        }
+      } catch (err) {
+        console.error("Failed to load navbar categories from DB", err);
+      }
+    };
+    startTransition(() => {
+      fetchNavbarCategories();
+    });
+  }, []);
 
   const handleSearch = (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -43,8 +78,10 @@ export default function Navbar() {
 
   // Close mobile menu on route change
   useEffect(() => {
-    setMobileMenuOpen(false);
-    setCategoryOpen(false);
+    startTransition(() => {
+      setMobileMenuOpen(false);
+      setCategoryOpen(false);
+    });
   }, [pathname]);
 
   useEffect(() => {
@@ -80,7 +117,7 @@ export default function Navbar() {
         if (cartStr) {
           const cart = JSON.parse(cartStr);
           if (Array.isArray(cart)) {
-            const total = cart.reduce((sum, item: any) => sum + (item.quantity || 1), 0);
+            const total = cart.reduce((sum, item: { quantity?: number }) => sum + (item.quantity || 1), 0);
             setCartCount(total);
             return;
           }
@@ -183,6 +220,12 @@ export default function Navbar() {
               )}
             </Link>
             <Link
+              href="/profil"
+              className="relative w-9 h-9 md:w-10 md:h-10 flex items-center justify-center text-gray-500 hover:text-green-600 rounded-full hover:bg-gray-100 transition-colors"
+            >
+              <Bell className="w-5 h-5" />
+            </Link>
+            <Link
               href="/keranjang"
               className="relative w-9 h-9 md:w-10 md:h-10 flex items-center justify-center text-gray-500 hover:text-green-600 rounded-full hover:bg-gray-100 transition-colors"
             >
@@ -246,19 +289,21 @@ export default function Navbar() {
             </button>
             {categoryOpen && (
               <div className="absolute top-full left-0 mt-1 w-64 bg-white rounded-xl shadow-xl border border-gray-100 py-2 z-50">
-                {categories.map((cat) => (
+                {navCategories.map((cat) => (
                   <Link
                     key={cat.slug}
                     href={`/kategori/${cat.slug}`}
                     onClick={() => setCategoryOpen(false)}
                     className="flex items-center gap-3 px-4 py-2.5 hover:bg-green-50 group transition-colors"
                   >
-                    <span className="text-xl">{cat.icon}</span>
+                    <span className="text-xl">{cat.icon || "📦"}</span>
                     <div>
                       <p className="text-sm font-medium text-gray-800 group-hover:text-green-700">
                         {cat.name}
                       </p>
-                      <p className="text-xs text-gray-400">{cat.count} produk</p>
+                      <p className="text-xs text-gray-400">
+                        {cat.products && cat.products[0] ? cat.products[0].count : 0} produk
+                      </p>
                     </div>
                   </Link>
                 ))}
@@ -303,54 +348,82 @@ export default function Navbar() {
 
         {/* Mobile Nav */}
         {mobileMenuOpen && (
-          <div className="md:hidden border-t border-gray-100 py-3 space-y-1 relative z-50 bg-white">
-            {/* General Navigation Links first */}
-            <div className="space-y-1 pb-2 border-b border-gray-100">
+          <div className="md:hidden border-t border-gray-100 py-4 relative z-50 bg-white">
+            {/* Akun & Pesanan — Top Section */}
+            <div className="px-4 pb-4 border-b border-gray-100">
+              <div className="grid grid-cols-2 gap-3">
+                <Link
+                  href="/profil"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="flex flex-col items-center gap-1.5 bg-green-50 rounded-xl py-4 hover:bg-green-100 transition-colors"
+                >
+                  <div className="w-10 h-10 bg-green-600 rounded-full flex items-center justify-center">
+                    <User className="w-5 h-5 text-white" />
+                  </div>
+                  <span className="text-xs font-semibold text-green-700">Akun Saya</span>
+                </Link>
+                <Link
+                  href="/profil?tab=pesanan"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="flex flex-col items-center gap-1.5 bg-blue-50 rounded-xl py-4 hover:bg-blue-100 transition-colors"
+                >
+                  <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center">
+                    <Package className="w-5 h-5 text-white" />
+                  </div>
+                  <span className="text-xs font-semibold text-blue-700">Pesanan Saya</span>
+                </Link>
+              </div>
+            </div>
+
+            {/* Navigation Links */}
+            <div className="px-3 pt-3 space-y-0.5">
               <Link
                 href="/"
-                className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-100"
+                onClick={() => setMobileMenuOpen(false)}
+                className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors"
               >
-                Beranda
+                <span className="w-6 text-center">🏠</span> Beranda
               </Link>
               {navLinks.map((link) => (
                 <Link
                   key={link.label}
                   href={link.href}
-                  className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-100"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors"
                 >
+                  <span className="w-6 text-center">
+                    {link.label === "Flash Sale" ? "⚡" : link.label === "Promo" ? "🏷️" : "🔥"}
+                  </span>
                   {link.label}
                 </Link>
               ))}
-              <Link
-                href="/profil"
-                className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-100"
-              >
-                👤 Akun Saya
-              </Link>
               {isAdmin && (
                 <Link
                   href="/admin"
-                  className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-green-600 border border-green-200 mt-2"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-green-600 hover:bg-green-50 border border-green-200 mt-2 transition-colors"
                 >
-                  ⚙️ Admin Panel
+                  <span className="w-6 text-center">⚙️</span> Admin Panel
                 </Link>
               )}
             </div>
 
-            {/* Kategori list second */}
-            <div className="pt-2">
-              <p className="text-xs font-semibold text-gray-400 px-3 mb-2 uppercase tracking-wider">
-                Kategori
-              </p>
-              {categories.slice(0, 6).map((cat) => (
-                <Link
-                  key={cat.slug}
-                  href={`/kategori/${cat.slug}`}
-                  className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-gray-700 hover:bg-green-50 hover:text-green-700"
-                >
-                  <span>{cat.icon}</span> {cat.name}
-                </Link>
-              ))}
+            {/* Logout */}
+            <div className="px-3 pt-2 mt-2 border-t border-gray-100">
+              <button
+                onClick={async () => {
+                  localStorage.removeItem("hera_cart");
+                  localStorage.removeItem("hera_wishlist");
+                  localStorage.removeItem("hera_checkout_items");
+                  localStorage.removeItem("hera_applied_voucher");
+                  const supabase = createClient();
+                  await supabase.auth.signOut();
+                  window.location.reload();
+                }}
+                className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-red-500 hover:bg-red-50 transition-colors w-full"
+              >
+                <span className="w-6 text-center">🚪</span> Keluar
+              </button>
             </div>
           </div>
         )}
@@ -363,6 +436,54 @@ export default function Navbar() {
           onClick={() => setCategoryOpen(false)}
         />
       )}
+
+      {/* Mobile Bottom Tab Bar */}
+      <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200 safe-area-bottom">
+        <div className="flex items-center justify-around py-1">
+          <Link
+            href="/"
+            className={`flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg transition-colors ${
+              pathname === "/" ? "text-green-600" : "text-gray-500"
+            }`}
+          >
+            <span className="text-xl">{pathname === "/" ? "🏠" : "🏠"}</span>
+            <span className="text-[10px] font-medium">Beranda</span>
+          </Link>
+          <Link
+            href="/voucher"
+            className={`flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg transition-colors ${
+              pathname === "/voucher" ? "text-green-600" : "text-gray-500"
+            }`}
+          >
+            <span className="text-xl">🏷️</span>
+            <span className="text-[10px] font-medium">Voucher</span>
+          </Link>
+          <Link
+            href="/keranjang"
+            className={`flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg transition-colors relative ${
+              pathname === "/keranjang" ? "text-green-600" : "text-gray-500"
+            }`}
+          >
+            <span className="text-xl">🛒</span>
+            {cartCount > 0 && (
+              <span className="absolute -top-0.5 right-1 w-4 h-4 bg-green-600 rounded-full text-white text-[9px] flex items-center justify-center font-bold">
+                {cartCount > 99 ? "99+" : cartCount}
+              </span>
+            )}
+            <span className="text-[10px] font-medium">Keranjang</span>
+          </Link>
+          <Link
+            href="/profil"
+            className={`flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg transition-colors ${
+              pathname === "/profil" ? "text-green-600" : "text-gray-500"
+            }`}
+          >
+            <span className="text-xl">👤</span>
+            <span className="text-[10px] font-medium">Profil</span>
+          </Link>
+        </div>
+      </div>
+
     </header>
   );
 }
