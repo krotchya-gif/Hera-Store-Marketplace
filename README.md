@@ -143,7 +143,7 @@ marketplace/
 - **Dynamic sitemap.xml** — Auto-generate dari products & categories
 - **Dynamic robots.txt** — Custom content via admin
 - **Meta Pixel & GA4** — Script injection via SEO settings
-- **Next.js 16 Proxy** — `src/proxy.ts` (menggantikan middleware)
+- **Next.js 16 Proxy** — `src/proxy.ts` (menggantikan `middleware.ts`). **JANGAN** membuat file `middleware.ts` — Next.js 16 secara otomatis mendeteksi `proxy.ts` sebagai middleware entry point. Jika ada `middleware.ts`, akan terjadi konflik/auth looping.
 - **SEO** — Per-page metadata, SEO settings dari database
 - **Security Headers** — CSP, X-Content-Type-Options, X-Frame-Options, X-XSS-Protection, Referrer-Policy
 - **Rate Limiting** — 20+ endpoint dilindungi
