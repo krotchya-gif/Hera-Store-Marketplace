@@ -23,6 +23,7 @@ import {
 import type { Product, Review } from "@/types/database";
 
 import { formatRp } from "@/utils/format";
+import { addToCart, getWishlist, toggleWishlist } from "@/lib/cart-utils";
 
 interface ProductDetailClientProps {
   product: Product;
@@ -60,16 +61,7 @@ export default function ProductDetailClient({
 
   const [wished, setWished] = useState<boolean>(() => {
     if (typeof window === "undefined") return false;
-    try {
-      const wishStr = localStorage.getItem("hera_wishlist");
-      if (wishStr) {
-        const wish = JSON.parse(wishStr);
-        return Array.isArray(wish) && wish.includes(product.id);
-      }
-    } catch (e) {
-      console.error(e);
-    }
-    return false;
+    return getWishlist().includes(product.id);
   });
   const [addedToCart, setAddedToCart] = useState(false);
   const [activeImage, setActiveImage] = useState(0);
@@ -109,42 +101,25 @@ export default function ProductDetailClient({
         return;
       }
 
-      const cartStr = localStorage.getItem("hera_cart");
-      let cart: { id: string; name: string; price: number; originalPrice: number | null; quantity: number; emoji: string; variant: unknown; variantId: string | null; stock: number; slug: string | null; }[] = cartStr ? JSON.parse(cartStr) : [];
-      if (!Array.isArray(cart)) cart = [];
-
       const variantName = currentVariant ? currentVariant.name : null;
       const variantId = currentVariant ? currentVariant.id : null;
-
-      const existingIndex = cart.findIndex(
-        (item) => item.id === product.id && item.variant === variantName
-      );
-
       const itemPrice = currentVariant ? currentVariant.price : (product.discount_price ?? product.price);
-      const originalPrice = currentVariant ? null : (product.discount_price ? product.price : null);
 
-      if (existingIndex > -1) {
-        cart[existingIndex].quantity = Math.min(
-          maxStock,
-          cart[existingIndex].quantity + quantity
-        );
-      } else {
-        cart.push({
+      addToCart(
+        {
           id: product.id,
           name: product.name,
           price: itemPrice,
-          originalPrice: originalPrice,
-          quantity: quantity,
           emoji: imageList[0].startsWith("http") ? "🧴" : imageList[0],
-          variant: variantName,
-          variantId: variantId,
           stock: maxStock,
-          slug: product.slug,
-        });
-      }
+          slug: product.slug ?? undefined,
+          originalPrice: currentVariant ? null : (product.discount_price ? product.price : null),
+        },
+        quantity,
+        variantName,
+        variantId
+      );
 
-      localStorage.setItem("hera_cart", JSON.stringify(cart));
-      window.dispatchEvent(new Event("cart-updated"));
       setAddedToCart(true);
       setTimeout(() => setAddedToCart(false), 2000);
     } catch (err) {
@@ -198,20 +173,9 @@ export default function ProductDetailClient({
                       return;
                     }
 
-                    const wishStr = localStorage.getItem("hera_wishlist");
-                    let wish: string[] = wishStr ? JSON.parse(wishStr) : [];
-                    if (!Array.isArray(wish)) wish = [];
-
                     const nextWished = !wished;
                     setWished(nextWished);
-
-                    if (nextWished) {
-                      if (!wish.includes(product.id)) wish.push(product.id);
-                    } else {
-                      wish = wish.filter((id: string) => id !== product.id);
-                    }
-                    localStorage.setItem("hera_wishlist", JSON.stringify(wish));
-                    window.dispatchEvent(new Event("wishlist-updated"));
+                    toggleWishlist(product.id);
                   } catch (e) {
                     console.error(e);
                   }
@@ -537,7 +501,7 @@ export default function ProductDetailClient({
                           <p className="text-xs font-medium text-gray-900 line-clamp-2 mb-1">{p.name}</p>
                           <div className="flex items-center gap-1 mb-1">
                             <Star className="w-3 h-3 text-yellow-400 fill-current" />
-                            <span className="text-xs text-gray-500">4.8</span>
+                            <span className="text-xs text-gray-500">{ratingSummary.average}</span>
                           </div>
                           <p className="text-sm font-bold text-green-700">{formatRp(p.price)}</p>
                         </div>

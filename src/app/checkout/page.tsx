@@ -7,9 +7,7 @@ import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { useToast } from "@/components/Toast";
 import { createClient } from "@/utils/supabase/client";
-import {
-  formatRp,
-} from "@/utils/mockData";
+import { formatRp } from "@/utils/format";
 import {
   ChevronRight,
   MapPin,
@@ -186,7 +184,7 @@ export default function CheckoutPage() {
     } catch (e) {
       console.error(e);
     }
-  }, [router]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const openNewAddress = () => {
     setAddressForm({
@@ -228,7 +226,7 @@ export default function CheckoutPage() {
     }
   };
 
-  const address = savedAddresses.find((a: SavedAddress) => a.id === selectedAddress)!;
+  const address = savedAddresses.find((a: SavedAddress) => a.id === selectedAddress) ?? null;
 
   const shippingService = shippingOptions
     .flatMap((c) => c.services.map((s) => ({ ...s, courier: c.courier })))
@@ -261,6 +259,11 @@ export default function CheckoutPage() {
     }
 
     if (isSubmittingRef.current || isSubmitting) return;
+    if (!address) {
+      toast("error", "Silakan pilih alamat pengiriman terlebih dahulu.");
+      setIsSubmitting(false);
+      return;
+    }
     isSubmittingRef.current = true;
     setIsSubmitting(true);
     try {
@@ -457,9 +460,11 @@ export default function CheckoutPage() {
                 <h2 className="text-lg font-bold text-gray-900 mb-1 flex items-center gap-2">
                   <Truck className="w-5 h-5 text-green-600" /> Pilih Kurir & Layanan
                 </h2>
-                <p className="text-sm text-gray-500 mb-4">
-                  Dikirim ke: {address.address}, {address.city}
-                </p>
+                {address && (
+                  <p className="text-sm text-gray-500 mb-4">
+                    Dikirim ke: {address.address}, {address.city}
+                  </p>
+                )}
 
                 <div className="space-y-4">
                   {shippingOptions.map((courier) => (
@@ -572,14 +577,16 @@ export default function CheckoutPage() {
                 </div>
 
                 <div className="space-y-3">
-                  <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-xl">
-                    <MapPin className="w-4 h-4 text-green-600 mt-0.5 shrink-0" />
-                    <div>
-                      <p className="text-sm font-semibold text-gray-700">Alamat Pengiriman</p>
-                      <p className="text-sm text-gray-600">{address.name} · {address.phone}</p>
-                      <p className="text-sm text-gray-600">{address.address}, {address.city} {address.postal_code}</p>
+                  {address && (
+                    <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-xl">
+                      <MapPin className="w-4 h-4 text-green-600 mt-0.5 shrink-0" />
+                      <div>
+                        <p className="text-sm font-semibold text-gray-700">Alamat Pengiriman</p>
+                        <p className="text-sm text-gray-600">{address.name} · {address.phone}</p>
+                        <p className="text-sm text-gray-600">{address.address}, {address.city} {address.postal_code}</p>
+                      </div>
                     </div>
-                  </div>
+                  )}
                   <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-xl">
                     <Truck className="w-4 h-4 text-green-600 shrink-0" />
                     <div>

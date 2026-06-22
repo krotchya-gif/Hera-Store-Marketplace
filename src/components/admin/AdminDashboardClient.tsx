@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
 import StatCard from "@/components/admin/StatCard";
 import StatusBadge from "@/components/admin/StatusBadge";
 import { STORE_NAME } from "@/utils/storeConfig";
+import { formatRupiah } from "@/utils/format";
 import {
   LineChart,
   Line,
@@ -22,12 +22,6 @@ import type { DashboardStats } from "@/types/database";
 
 const CATEGORY_COLORS = ["#16A34A", "#22D3EE", "#FBBF24", "#A78BFA", "#EC4899", "#3B82F6"];
 
-const formatRupiah = (value: number) => {
-  if (value >= 1000000) return `Rp ${(value / 1000000).toFixed(1)}jt`;
-  if (value >= 1000) return `Rp ${(value / 1000).toFixed(0)}rb`;
-  return `Rp ${value}`;
-};
-
 const formatRpFull = (n: number) => `Rp ${n.toLocaleString("id-ID")}`;
 
 interface AdminDashboardClientProps {
@@ -35,7 +29,7 @@ interface AdminDashboardClientProps {
 }
 
 export default function AdminDashboardClient({ stats }: AdminDashboardClientProps) {
-  const [chartPeriod] = useState("30 Hari");
+  const chartPeriod = "30 Hari";
 
   return (
     <div className="space-y-6">

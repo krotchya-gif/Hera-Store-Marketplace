@@ -1,21 +1,61 @@
 // ─── Export Orders as CSV ──────────────────────────────────────
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getAllOrders } from "@/lib/orders";
 import { verifyAdminRole, handleAdminError } from "@/lib/auth-utils";
+import { checkRateLimit, getRateLimitKey } from "@/lib/rate-limit";
 
-export async function GET() {
+const MAX_EXPORT_ROWS = 5000;
+
+export async function GET(request: NextRequest) {
   try {
     await verifyAdminRole();
 
+    const rlKey = getRateLimitKey(request);
+    const { allowed } = checkRateLimit(rlKey, 5, 60000);
+    if (!allowed) return NextResponse.json({ error: "Terlalu banyak permintaan. Silakan coba lagi." }, { status: 429 });
+
+    const { searchParams } = new URL(request.url);
+    const dateFrom = searchParams.get("dateFrom");
+    const dateTo = searchParams.get("dateTo");
+
+    // Validasi parameter date wajib
+    if (!dateFrom || !dateTo) {
+      return NextResponse.json(
+        { error: "Parameter dateFrom dan dateTo wajib diisi. Batasi export berdasarkan rentang tanggal." },
+        { status: 400 }
+      );
+    }
+
+    // Hitung perkiraan jumlah data dalam range
+    const previewParams = new URLSearchParams({ dateFrom, dateTo, pageSize: "1", page: "1" });
+    const previewRes = await getAllOrders({ dateFrom, dateTo, page: 1, pageSize: 1 });
+    const estimatedCount = previewRes.count || 0;
+
+    if (estimatedCount > MAX_EXPORT_ROWS) {
+      return NextResponse.json(
+        {
+          error: `Data dalam rentang tanggal yang dipilih terlalu banyak (${estimatedCount.toLocaleString("id-ID")} baris). Maksimal ${MAX_EXPORT_ROWS.toLocaleString("id-ID")} baris per export. Persempit rentang tanggal dan coba lagi.`,
+          maxRows: MAX_EXPORT_ROWS,
+          estimatedRows: estimatedCount,
+        },
+        { status: 400 }
+      );
+    }
+
     const CHUNK_SIZE = 500;
-    const firstPage = await getAllOrders({ page: 1, pageSize: CHUNK_SIZE });
+    const firstPage = await getAllOrders({ dateFrom, dateTo, page: 1, pageSize: CHUNK_SIZE });
     const totalCount = firstPage.count;
-    const totalPages = Math.ceil(totalCount / CHUNK_SIZE);
+    const totalPages = Math.ceil(Math.min(totalCount, MAX_EXPORT_ROWS) / CHUNK_SIZE);
 
     let allOrders = [...firstPage.data];
     for (let page = 2; page <= totalPages; page++) {
-      const chunk = await getAllOrders({ page, pageSize: CHUNK_SIZE });
+      const chunk = await getAllOrders({ dateFrom, dateTo, page, pageSize: CHUNK_SIZE });
       allOrders = [...allOrders, ...chunk.data];
+    }
+
+    // Batasi ke MAX_EXPORT_ROWS
+    if (allOrders.length > MAX_EXPORT_ROWS) {
+      allOrders = allOrders.slice(0, MAX_EXPORT_ROWS);
     }
 
     const headers = [
@@ -50,7 +90,7 @@ export async function GET() {
       ].join(",")
     );
 
-    const csv = "﻿" + [headers, ...rows].join("\n"); // BOM for UTF-8 Excel
+    const csv = "\uFEFF" + [headers, ...rows].join("\n"); // BOM for UTF-8 Excel
 
     return new NextResponse(csv, {
       headers: {

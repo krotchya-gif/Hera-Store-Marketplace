@@ -174,7 +174,7 @@ export default function CustomersPage() {
     try {
       const params = new URLSearchParams({
         page: currentPage.toString(),
-        pageSize: "10",
+        pageSize: Math.min(10, 100).toString(),
         ...(search && { search }),
       });
       const res = await fetch(`/api/admin/customers?${params}`);

@@ -1,10 +1,18 @@
 import { createClient } from "@/utils/supabase/server";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
+import ConfirmPaymentButton from "./ConfirmPaymentButton";
 
 export default async function BayarPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const supabase = await createClient();
+
+  // Session guard
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    redirect("/profil?redirect=/bayar/" + id);
+  }
+
   const { data: order } = await supabase
     .from("orders")
     .select("*")
@@ -12,6 +20,30 @@ export default async function BayarPage({ params }: { params: Promise<{ id: stri
     .single();
 
   if (!order || order.status !== "menunggu") notFound();
+
+  // Verify ownership
+  if (order.user_id !== user.id) notFound();
+
+  // Fetch bank account from store_settings (not hardcoded)
+  let bankAccount = { bank: "BCA", number: "1234567890", owner: "PT Hera Store" };
+  const { data: paymentSettings } = await supabase
+    .from("store_settings")
+    .select("value")
+    .eq("key", "payment")
+    .single();
+
+  if (paymentSettings?.value) {
+    const val = paymentSettings.value as { bank_account?: { bank?: string; number?: string; owner?: string } };
+    if (val.bank_account) {
+      bankAccount = {
+        bank: val.bank_account.bank || bankAccount.bank,
+        number: val.bank_account.number || bankAccount.number,
+        owner: val.bank_account.owner || bankAccount.owner,
+      };
+    }
+  }
+
+  const sudahLunas = order.payment_status === "lunas";
 
   return (
     <div className="min-h-screen bg-gray-50 pb-16 md:pb-0">
@@ -23,10 +55,14 @@ export default async function BayarPage({ params }: { params: Promise<{ id: stri
       <div className="max-w-lg mx-auto px-4 py-8 space-y-4">
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 text-center">
           <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <span className="text-3xl">💰</span>
+            <span className="text-3xl">{sudahLunas ? "✅" : "💰"}</span>
           </div>
-          <h1 className="text-xl font-bold text-gray-900 mb-1">Pembayaran</h1>
-          <p className="text-sm text-gray-500 mb-6">Selesaikan pembayaran sebelum batas waktu</p>
+          <h1 className="text-xl font-bold text-gray-900 mb-1">
+            {sudahLunas ? "Pembayaran Diterima" : "Pembayaran"}
+          </h1>
+          <p className="text-sm text-gray-500 mb-6">
+            {sudahLunas ? "Terima kasih! Pesanan akan segera diproses." : "Selesaikan pembayaran sebelum batas waktu"}
+          </p>
 
           <div className="bg-gray-50 rounded-xl p-4 mb-4 text-left space-y-2">
             <div className="flex justify-between text-sm">
@@ -39,31 +75,45 @@ export default async function BayarPage({ params }: { params: Promise<{ id: stri
             </div>
           </div>
 
-          <div className="border-t border-gray-100 pt-4">
-            <h3 className="font-semibold text-gray-900 text-sm mb-3">Transfer ke:</h3>
-            <div className="bg-blue-50 rounded-xl p-4 space-y-2">
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-500">Bank</span>
-                <span className="font-semibold text-gray-900">BCA</span>
+          {!sudahLunas && (
+            <div className="border-t border-gray-100 pt-4">
+              <h3 className="font-semibold text-gray-900 text-sm mb-3">Transfer ke:</h3>
+              <div className="bg-blue-50 rounded-xl p-4 space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">Bank</span>
+                  <span className="font-semibold text-gray-900">{bankAccount.bank}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">No. Rekening</span>
+                  <span className="font-semibold text-gray-900 font-mono">{bankAccount.number}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">Atas Nama</span>
+                  <span className="font-semibold text-gray-900">{bankAccount.owner}</span>
+                </div>
               </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-500">No. Rekening</span>
-                <span className="font-semibold text-gray-900 font-mono">1234567890</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-500">Atas Nama</span>
-                <span className="font-semibold text-gray-900">PT Hera Store</span>
-              </div>
+              <p className="text-xs text-gray-400 mt-2">
+                Setelah transfer, klik tombol "Sudah Bayar" untuk konfirmasi.
+              </p>
             </div>
-            <p className="text-xs text-gray-400 mt-2">Konfirmasi pembayaran melalui WhatsApp setelah transfer.</p>
-          </div>
+          )}
 
-          <Link
-            href="/profil?tab=pesanan"
-            className="mt-6 w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-green-600 text-white font-bold text-sm hover:bg-green-700 transition-colors"
-          >
-            Sudah Bayar
-          </Link>
+          <div className="mt-6 space-y-3">
+            {!sudahLunas && (
+              <ConfirmPaymentButton orderId={order.id} orderNumber={order.order_number} />
+            )}
+
+            <Link
+              href="/profil?tab=pesanan"
+              className={`w-full flex items-center justify-center gap-2 py-3 rounded-xl font-bold text-sm transition-colors ${
+                sudahLunas
+                  ? "bg-green-600 text-white hover:bg-green-700"
+                  : "border border-gray-300 text-gray-600 hover:bg-gray-50"
+              }`}
+            >
+              {sudahLunas ? "Lihat Status Pesanan" : "Nanti Saja"}
+            </Link>
+          </div>
         </div>
       </div>
     </div>

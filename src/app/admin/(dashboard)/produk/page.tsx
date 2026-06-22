@@ -396,7 +396,7 @@ export default function ProductsPage() {
     try {
       const params = new URLSearchParams({
         page: currentPage.toString(),
-        pageSize: "20",
+        pageSize: Math.min(20, 100).toString(),
         ...(search && { search }),
         ...(selectedCategory !== "Semua" && { categoryId: categories.find(c => c.name === selectedCategory)?.id || selectedCategory }),
         ...(selectedStatus !== "Semua" && { status: selectedStatus.toLowerCase() }),
@@ -492,40 +492,52 @@ export default function ProductsPage() {
 
   const handleBulkStatus = async (isActive: boolean) => {
     if (!confirm(`Ubah status ${selected.length} produk menjadi ${isActive ? "Aktif" : "Nonaktif"}?`)) return;
-    startTransition(async () => {
-      try {
-        await Promise.all(
-          selected.map((id) =>
-            fetch(`/api/admin/products/${id}/toggle`, {
-              method: "PATCH",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ is_active: isActive }),
-            })
-          )
-        );
-        setSelected([]);
-        fetchProducts();
-      } catch (err) {
-        console.error(err);
+    const done: string[] = [];
+    try {
+      for (const id of selected) {
+        const res = await fetch(`/api/admin/products/${id}/toggle`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ is_active: isActive }),
+        });
+        if (!res.ok) throw new Error(`Gagal mengubah status produk ${id}`);
+        done.push(id);
       }
-    });
+      setSelected([]);
+      fetchProducts();
+    } catch (err) {
+      console.error("Bulk status gagal di tengah, rollback perubahan yang sudah berhasil", err);
+      // Rollback: balikkan status produk yang sudah berhasil
+      for (const id of done) {
+        try {
+          await fetch(`/api/admin/products/${id}/toggle`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ is_active: !isActive }),
+          });
+        } catch (rollbackErr) {
+          console.error("Rollback gagal untuk", id, rollbackErr);
+        }
+      }
+      alert("Operasi gagal. Perubahan yang sudah berhasil dikembalikan.");
+    }
   };
 
   const handleBulkDelete = async () => {
     if (!confirm(`Hapus ${selected.length} produk? Tindakan ini tidak bisa dibatalkan.`)) return;
-    startTransition(async () => {
-      try {
-        await Promise.all(
-          selected.map((id) =>
-            fetch(`/api/admin/products/${id}`, { method: "DELETE" })
-          )
-        );
-        setSelected([]);
-        fetchProducts();
-      } catch (err) {
-        console.error(err);
+    const done: string[] = [];
+    try {
+      for (const id of selected) {
+        const res = await fetch(`/api/admin/products/${id}`, { method: "DELETE" });
+        if (!res.ok) throw new Error(`Gagal menghapus produk ${id}`);
+        done.push(id);
       }
-    });
+      setSelected([]);
+      fetchProducts();
+    } catch (err) {
+      console.error("Bulk delete gagal di tengah", err);
+      alert("Operasi gagal. Tidak ada perubahan yang disimpan (proses dihentikan).");
+    }
   };
 
   const toggleSelect = (id: string) => {

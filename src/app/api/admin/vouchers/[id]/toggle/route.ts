@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { toggleVoucherStatus } from "@/lib/admin";
 import { verifyAdminRole, handleAdminError } from "@/lib/auth-utils";
+import { checkRateLimit, getRateLimitKey } from "@/lib/rate-limit";
 
 export async function PATCH(
   request: NextRequest,
@@ -8,6 +9,9 @@ export async function PATCH(
 ) {
   try {
     await verifyAdminRole();
+    const rlKey = getRateLimitKey(request);
+    const { allowed } = checkRateLimit(rlKey, 30, 60000);
+    if (!allowed) return NextResponse.json({ error: "Terlalu banyak permintaan. Silakan coba lagi." }, { status: 429 });
     const { id } = await params;
     const { is_active } = await request.json();
     const success = await toggleVoucherStatus(id, is_active);

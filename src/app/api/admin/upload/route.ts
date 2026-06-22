@@ -2,10 +2,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 import { verifyAdminRole, handleAdminError } from "@/lib/auth-utils";
+import { checkRateLimit, getRateLimitKey } from "@/lib/rate-limit";
 
 export async function POST(request: NextRequest) {
   try {
     await verifyAdminRole();
+    // Rate limiting
+    const rlKey = getRateLimitKey(request);
+    const { allowed } = checkRateLimit(rlKey, 10, 60000);
+    if (!allowed) return NextResponse.json({ error: "Terlalu banyak permintaan. Silakan coba lagi." }, { status: 429 });
 
     const formData = await request.formData();
     const file = formData.get("file") as File | null;
@@ -27,8 +32,9 @@ export async function POST(request: NextRequest) {
     }
 
     const supabase = await createClient();
+    const safeProductId = productId.replace(/[^a-fA-F0-9-]/g, "");
     const fileExt = file.name.split(".").pop();
-    const fileName = `${productId}/${Date.now()}.${fileExt}`;
+    const fileName = `${safeProductId}/${Date.now()}.${fileExt}`;
 
     // Upload to Supabase Storage
     const { error: uploadError } = await supabase.storage

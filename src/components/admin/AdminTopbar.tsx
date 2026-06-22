@@ -1,6 +1,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
+import { useState } from "react";
 import { Search, Menu } from "lucide-react";
 import { STORE_NAME } from "@/utils/storeConfig";
 import NotificationDropdown from "./NotificationDropdown";
@@ -24,12 +25,19 @@ interface AdminTopbarProps {
 
 export default function AdminTopbar({ onMenuToggle }: AdminTopbarProps) {
   const pathname = usePathname();
+  const [searchQuery, setSearchQuery] = useState("");
 
   const page = Object.entries(pageTitles).find(
     ([key]) =>
-      pathname === key || (key !== "/admin" && pathname.startsWith(key))
+      pathname === key || (key !== "/admin" && pathname.startsWith(key + "/")) || (key !== "/admin" && pathname.startsWith(key))
   );
-  const { title, breadcrumb } = page?.[1] ?? {
+  // Fallback: match parent route for sub-routes like /admin/produk/tambah, /admin/pesanan/123
+  const matchedPage = page ?? (() => {
+    const parentKey = "/" + pathname.split("/").slice(1, 3).join("/");
+    const entry = Object.entries(pageTitles).find(([k]) => k === parentKey);
+    return entry ?? null;
+  })();
+  const { title, breadcrumb } = matchedPage?.[1] ?? {
     title: "Dashboard",
     breadcrumb: ["Admin"],
   };
@@ -80,12 +88,28 @@ export default function AdminTopbar({ onMenuToggle }: AdminTopbarProps) {
           <input
             type="text"
             placeholder="Cari..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && searchQuery.trim()) {
+                // Redirect to search results if needed
+                window.location.href = `/admin/produk?search=${encodeURIComponent(searchQuery.trim())}`;
+              }
+            }}
             className="bg-gray-50 border border-gray-200 rounded-xl pl-9 pr-4 py-2 text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:border-green-400 focus:ring-2 focus:ring-green-100 w-40 lg:w-48"
           />
         </div>
 
         {/* Search icon on mobile */}
-        <button className="md:hidden w-9 h-9 bg-gray-50 border border-gray-200 rounded-xl flex items-center justify-center text-gray-600 hover:bg-gray-100">
+        <button
+          className="md:hidden w-9 h-9 bg-gray-50 border border-gray-200 rounded-xl flex items-center justify-center text-gray-600 hover:bg-gray-100"
+          onClick={() => {
+            const q = prompt("Cari sesuatu di admin...");
+            if (q && q.trim()) {
+              window.location.href = `/admin/produk?search=${encodeURIComponent(q.trim())}`;
+            }
+          }}
+        >
           <Search className="w-4 h-4" />
         </button>
 

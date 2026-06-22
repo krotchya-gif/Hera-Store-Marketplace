@@ -7,18 +7,18 @@ export default function Footer() {
     {
       title: "Layanan",
       links: [
-        { label: "Tentang Kami", href: "#" },
-        { label: "Karir", href: "#" },
-        { label: "Blog", href: "#" },
-        { label: "Hubungi Kami", href: "#" },
+        { label: "Tentang Kami", href: "/tentang-kami" },
+        { label: "Karir", href: "/karir" },
+        { label: "Blog", href: "/blog" },
+        { label: "Hubungi Kami", href: "/hubungi-kami" },
       ],
     },
     {
       title: "Bantuan",
       links: [
-        { label: "FAQ", href: "#" },
-        { label: "Cara Belanja", href: "#" },
-        { label: "Pengembalian Barang", href: "#" },
+        { label: "FAQ", href: "/faq" },
+        { label: "Cara Belanja", href: "/cara-belanja" },
+        { label: "Pengembalian Barang", href: "/pengembalian-barang" },
         { label: "Lacak Pesanan", href: "/profil?tab=pesanan" },
       ],
     },
@@ -82,7 +82,7 @@ export default function Footer() {
 
         <div className="border-t border-gray-800 pt-6 flex flex-col sm:flex-row items-center justify-between gap-4">
           <p className="text-gray-500 text-xs">
-            © 2025 {STORE_NAME}. Hak cipta dilindungi.
+            © {new Date().getFullYear()} {STORE_NAME}. Hak cipta dilindungi.
           </p>
           <div className="flex items-center gap-2">
             <span className="text-gray-500 text-xs">Metode Pembayaran:</span>

@@ -4,6 +4,7 @@ import "./globals.css";
 import { STORE_NAME, STORE_DESCRIPTION } from "@/utils/storeConfig";
 import { getSeoSettings } from "@/lib/seo";
 import { ToastProvider } from "@/components/Toast";
+import ErrorBoundary from "@/components/ErrorBoundary";
 
 export async function generateMetadata(): Promise<Metadata> {
   const seo = await getSeoSettings();
@@ -26,7 +27,9 @@ export default async function RootLayout({
     <html lang="id">
       <body className="font-sans antialiased">
         <ToastProvider>
-          {children}
+          <ErrorBoundary>
+            {children}
+          </ErrorBoundary>
         </ToastProvider>
 
         {/* Meta Pixel */}

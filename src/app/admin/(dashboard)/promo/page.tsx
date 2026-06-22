@@ -27,8 +27,12 @@ function VoucherModal({
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   const generateCode = () => {
-    const random = Math.floor(1000 + Math.random() * 9000);
-    setCode(`${STORE_NAME.replace(/\s+/g, "").toUpperCase().slice(0, 5)}${random}`);
+    // Generate kode 8 karakter secara crypto-safe
+    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    const array = new Uint8Array(8);
+    crypto.getRandomValues(array);
+    const code = Array.from(array, (byte) => chars[byte % chars.length]).join("");
+    setCode(`${STORE_NAME.replace(/\s+/g, "").toUpperCase().slice(0, 5)}${code}`);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {

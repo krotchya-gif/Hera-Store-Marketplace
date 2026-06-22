@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useTransition } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { createClient } from "@/utils/supabase/client";
 import Navbar from "@/components/Navbar";
@@ -42,6 +42,7 @@ interface ShippingAddress {
 }
 
 import { formatRp } from "@/utils/format";
+import { STATUS_CONFIG } from "@/utils/order-status";
 
 // ─── Address Manager ───────────────────────────────────────────
 function AddressManager() {
@@ -53,7 +54,6 @@ function AddressManager() {
     label: "Rumah", name: "", phone: "", address: "", city: "", province: "", postal_code: "", is_default: false,
   });
   const [saving, setSaving] = useState(false);
-  const [, startTransition] = useTransition();
 
   const fetchAddresses = async () => {
     try {
@@ -64,9 +64,7 @@ function AddressManager() {
   };
 
   useEffect(() => {
-    startTransition(() => {
-      fetchAddresses();
-    });
+    fetchAddresses();
   }, []);
 
   const openNew = () => {
@@ -184,35 +182,12 @@ function AddressManager() {
   );
 }
 
-const ORDER_STATUS_CONFIG: Record<
-  string,
-  { label: string; color: string; icon: React.ReactNode }
-> = {
-  menunggu: {
-    label: "Menunggu Pembayaran",
-    color: "text-orange-600 bg-orange-50 border-orange-200",
-    icon: <Clock className="w-4 h-4" />,
-  },
-  diproses: {
-    label: "Sedang Diproses",
-    color: "text-blue-600 bg-blue-50 border-blue-200",
-    icon: <RefreshCw className="w-4 h-4" />,
-  },
-  dikirim: {
-    label: "Sedang Dikirim",
-    color: "text-purple-600 bg-purple-50 border-purple-200",
-    icon: <Truck className="w-4 h-4" />,
-  },
-  selesai: {
-    label: "Selesai",
-    color: "text-green-600 bg-green-50 border-green-200",
-    icon: <CheckCircle className="w-4 h-4" />,
-  },
-  dibatalkan: {
-    label: "Dibatalkan",
-    color: "text-red-600 bg-red-50 border-red-200",
-    icon: <XCircle className="w-4 h-4" />,
-  },
+const STATUS_ICONS: Record<string, React.ReactNode> = {
+  menunggu: <Clock className="w-4 h-4" />,
+  diproses: <RefreshCw className="w-4 h-4" />,
+  dikirim: <Truck className="w-4 h-4" />,
+  selesai: <CheckCircle className="w-4 h-4" />,
+  dibatalkan: <XCircle className="w-4 h-4" />,
 };
 
 const ORDER_TABS = [
@@ -242,8 +217,8 @@ export default function ProfilClient({ initialUser, initialProfile, orders }: Pr
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
-  const [isPending, startTransition] = useTransition();
   const [error, setError] = useState("");
+  const [authLoading, setAuthLoading] = useState(false);
 
   // Profile update states
   const [profileName, setProfileName] = useState(initialProfile?.name || "");
@@ -287,35 +262,35 @@ export default function ProfilClient({ initialUser, initialProfile, orders }: Pr
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    setAuthLoading(true);
     const supabase = createClient();
 
-    startTransition(async () => {
-      if (authMode === "login") {
-        const { error: err } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
-        if (err) {
-          setError("Email atau password salah.");
-        } else {
-          window.location.reload();
-        }
+    if (authMode === "login") {
+      const { error: err } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+      if (err) {
+        setError("Email atau password salah.");
       } else {
-        const { error: err } = await supabase.auth.signUp({
-          email,
-          password,
-          options: {
-            data: { name },
-          },
-        });
-        if (err) {
-          setError(err.message);
-        } else {
-          toast("success", "Pendaftaran berhasil! Silakan cek email Anda untuk konfirmasi.");
-          setAuthMode("login");
-        }
+        window.location.reload();
       }
-    });
+    } else {
+      const { error: err } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: { name },
+        },
+      });
+      if (err) {
+        setError(err.message);
+      } else {
+        toast("success", "Pendaftaran berhasil! Silakan cek email Anda untuk konfirmasi.");
+        setAuthMode("login");
+      }
+    }
+    setAuthLoading(false);
   };
 
   const handleLogout = async () => {
@@ -399,10 +374,10 @@ export default function ProfilClient({ initialUser, initialProfile, orders }: Pr
 
               <button
                 type="submit"
-                disabled={isPending}
+                disabled={authLoading}
                 className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2.5 rounded-xl text-sm transition-colors shadow-sm disabled:opacity-50"
               >
-                {isPending ? "Memproses..." : authMode === "login" ? "Masuk" : "Daftar"}
+                {authLoading ? "Memproses..." : authMode === "login" ? "Masuk" : "Daftar"}
               </button>
             </form>
 
@@ -596,7 +571,8 @@ export default function ProfilClient({ initialUser, initialProfile, orders }: Pr
                       <p className="text-sm text-gray-400 text-center py-6">Belum ada transaksi.</p>
                     ) : (
                       orders.slice(0, 2).map((order) => {
-                        const statusConf = ORDER_STATUS_CONFIG[order.status] || { label: order.status, color: "text-gray-600 bg-gray-50", icon: null };
+                        const statusConf = STATUS_CONFIG[order.status] || { label: order.status, color: "text-gray-600 bg-gray-50" };
+                        const statusIcon = STATUS_ICONS[order.status] || null;
                         const firstItem = order.order_items?.[0];
                         return (
                           <div key={order.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
@@ -611,7 +587,7 @@ export default function ProfilClient({ initialUser, initialProfile, orders }: Pr
                             </div>
                             <div className="text-right">
                               <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold border ${statusConf.color}`}>
-                                {statusConf.icon} {statusConf.label}
+                                {statusIcon} {statusConf.label}
                               </span>
                               <p className="text-xs font-bold text-gray-900 mt-1">{formatRp(order.total)}</p>
                             </div>
@@ -674,7 +650,8 @@ export default function ProfilClient({ initialUser, initialProfile, orders }: Pr
                       </div>
                     ) : (
                       filteredOrders.map((order) => {
-                        const statusConf = ORDER_STATUS_CONFIG[order.status] || { label: order.status, color: "text-gray-600 bg-gray-50", icon: null };
+                        const statusConf = STATUS_CONFIG[order.status] || { label: order.status, color: "text-gray-600 bg-gray-50" };
+                        const statusIcon = STATUS_ICONS[order.status] || null;
                         return (
                           <div key={order.id} className="p-4 md:p-5">
                             <div className="flex items-center justify-between mb-3">
@@ -683,7 +660,7 @@ export default function ProfilClient({ initialUser, initialProfile, orders }: Pr
                                 <p className="text-xs text-gray-500">{new Date(order.created_at).toLocaleDateString("id-ID")}</p>
                               </div>
                               <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border ${statusConf.color}`}>
-                                {statusConf.icon} {statusConf.label}
+                                {statusIcon} {statusConf.label}
                               </span>
                             </div>
 
@@ -743,7 +720,7 @@ export default function ProfilClient({ initialUser, initialProfile, orders }: Pr
                                       if (confirm("Konfirmasi bahwa pesanan sudah diterima?")) {
                                         try {
                                           const supabase = createClient();
-                                          await supabase.from("orders").update({ status: "selesai", updated_at: new Date().toISOString() }).eq("id", order.id);
+                                          await supabase.from("orders").update({ status: "selesai", updated_at: new Date().toISOString() }).eq("id", order.id).eq("user_id", user.id);
                                           window.location.reload();
                                         } catch (e) { console.error(e); }
                                       }

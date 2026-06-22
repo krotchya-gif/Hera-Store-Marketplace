@@ -1,25 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
+import { verifyAdminRole, handleAdminError } from "@/lib/auth-utils";
+import { checkRateLimit, getRateLimitKey } from "@/lib/rate-limit";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    // Rate limiting
+    const rlKey = getRateLimitKey(request);
+    const { allowed } = checkRateLimit(rlKey, 30, 60000);
+    if (!allowed) return NextResponse.json({ error: "Terlalu banyak permintaan. Silakan coba lagi." }, { status: 429 });
+
     const supabase = await createClient();
 
-    // Verify session & role
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single();
-
-    if (!profile || profile.role === "customer") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    // Verify admin role via helper
+    const { userId } = await verifyAdminRole();
 
     // Fetch all store settings
     const { data: settingsData, error: settingsError } = await supabase
@@ -27,7 +21,7 @@ export async function GET() {
       .select("*");
 
     if (settingsError) {
-      return NextResponse.json({ error: settingsError.message }, { status: 400 });
+      return NextResponse.json({ error: "Gagal memuat pengaturan toko" }, { status: 400 });
     }
 
     // Fetch all admin profiles
@@ -37,7 +31,7 @@ export async function GET() {
       .in("role", ["super_admin", "admin", "operator", "finance"]);
 
     if (adminsError) {
-      return NextResponse.json({ error: adminsError.message }, { status: 400 });
+      return NextResponse.json({ error: "Gagal memuat data admin" }, { status: 400 });
     }
 
     // Format settings into a key-value map
@@ -47,7 +41,8 @@ export async function GET() {
     }, {});
 
     // Ensure default settings are returned if not set in DB
-    const finalSettings = {
+    const finalSettings: Record<string, unknown> = {
+      ...settingsMap, // include all stored keys (pages, etc.)
       store_info: (settingsMap["store_info"] as Record<string, unknown> | undefined) || {
         name: "Hera Store",
         email: "info@herastore.com",
@@ -108,20 +103,22 @@ export async function GET() {
 
 export async function PUT(request: NextRequest) {
   try {
+    // Rate limiting
+    const rlKey = getRateLimitKey(request);
+    const { allowed } = checkRateLimit(rlKey, 20, 60000);
+    if (!allowed) return NextResponse.json({ error: "Terlalu banyak permintaan. Silakan coba lagi." }, { status: 429 });
+
     const supabase = await createClient();
 
-    // Verify session & role
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    // Verify admin role via helper
+    const { userId: adminUserId } = await verifyAdminRole();
 
+    // Extra role check — only super_admin/admin can modify settings
     const { data: profile } = await supabase
       .from("profiles")
       .select("role")
-      .eq("id", user.id)
+      .eq("id", adminUserId)
       .single();
-
     if (!profile || !["super_admin", "admin"].includes(profile.role)) {
       return NextResponse.json({ error: "Forbidden. Hanya admin yang dapat mengubah pengaturan." }, { status: 403 });
     }
@@ -156,7 +153,7 @@ export async function PUT(request: NextRequest) {
         .eq("id", targetProfile.id);
 
       if (error) {
-        return NextResponse.json({ error: error.message }, { status: 400 });
+        return NextResponse.json({ error: "Gagal memperbarui role admin" }, { status: 400 });
       }
 
       return NextResponse.json({ success: true });
@@ -175,7 +172,7 @@ export async function PUT(request: NextRequest) {
         .eq("id", id);
 
       if (error) {
-        return NextResponse.json({ error: error.message }, { status: 400 });
+        return NextResponse.json({ error: "Gagal menghapus admin" }, { status: 400 });
       }
 
       return NextResponse.json({ success: true });
@@ -197,7 +194,7 @@ export async function PUT(request: NextRequest) {
       });
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      return NextResponse.json({ error: "Gagal menyimpan pengaturan" }, { status: 400 });
     }
 
     return NextResponse.json({ success: true });

@@ -27,6 +27,23 @@ export default function AdminLoginPage() {
       setError("Email atau password salah. Coba lagi.");
       setLoading(false);
     } else {
+      // Cek role user setelah login sukses
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("role")
+          .eq("id", user.id)
+          .single();
+
+        if (profile && profile.role === "customer") {
+          // Customer tidak boleh login ke admin panel
+          await supabase.auth.signOut();
+          setError("Akses ditolak. Hanya admin yang bisa login.");
+          setLoading(false);
+          return;
+        }
+      }
       window.location.href = "/admin";
     }
   };

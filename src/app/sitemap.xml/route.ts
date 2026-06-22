@@ -7,7 +7,18 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 
-const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
+function getBaseUrl(request: Request): string {
+  // Priority 1: env var
+  if (process.env.NEXT_PUBLIC_SITE_URL) return process.env.NEXT_PUBLIC_SITE_URL;
+  // Priority 2: x-forwarded-host header (Vercel/NGINX)
+  const forwarded = request.headers.get("x-forwarded-host");
+  if (forwarded) return `https://${forwarded}`;
+  // Priority 3: host header
+  const host = request.headers.get("host");
+  if (host) return `https://${host}`;
+  // Fallback
+  return "http://localhost:3000";
+}
 
 function generateSitemapXml(entries: { url: string; lastModified: Date; changeFrequency: string; priority: number }[]): string {
   const urls = entries
@@ -27,7 +38,26 @@ ${urls}
 </urlset>`;
 }
 
-export async function GET() {
+/** Validate that a string looks like safe XML (no HTML/script injection) */
+function isValidXmlContent(content: string): boolean {
+  const trimmed = content.trim();
+  if (!trimmed.startsWith("<?xml") && !trimmed.startsWith("<")) return false;
+  // Reject if it contains HTML/script tags
+  if (/<\s*(script|iframe|object|embed|form|input|button|style|meta|link|applet)\b/i.test(trimmed)) return false;
+  // Try to parse as XML (basic structural check)
+  try {
+    // Simple structural validation: must have at least one open/close tag pair
+    const hasOpenClose = /<(\w+)[^>]*>[\s\S]*<\/\1>/.test(trimmed);
+    if (!hasOpenClose) return false;
+  } catch {
+    return false;
+  }
+  return true;
+}
+
+export async function GET(request: Request) {
+  const BASE_URL = getBaseUrl(request);
+
   // 1) Check for custom uploaded sitemap
   try {
     const supabase = await createClient();
@@ -38,7 +68,7 @@ export async function GET() {
       .single();
 
     const customContent = (data?.value as Record<string, unknown>)?.sitemap_xml_content as string | null;
-    if (customContent?.trim()) {
+    if (customContent?.trim() && isValidXmlContent(customContent)) {
       return new NextResponse(customContent, {
         headers: { "Content-Type": "application/xml; charset=utf-8" },
       });

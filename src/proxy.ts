@@ -28,24 +28,20 @@ export async function proxy(request: NextRequest) {
     },
   });
 
-  // IMPORTANT: DO NOT REMOVE auth.getUser()
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
   const { pathname } = request.nextUrl;
 
-  // Optimize: Only query DB if accessing admin panel
-  if (pathname.startsWith("/admin")) {
+  if (pathname.startsWith("/admin") || pathname.startsWith("/api/admin")) {
     if (!user) {
-      // Not logged in: allow access only to /admin/login
       if (pathname !== "/admin/login") {
         const url = request.nextUrl.clone();
         url.pathname = "/admin/login";
         return NextResponse.redirect(url);
       }
     } else {
-      // Logged in: check user profile role
       const { data: profile } = await supabase
         .from("profiles")
         .select("role")
@@ -55,14 +51,12 @@ export async function proxy(request: NextRequest) {
       const isAdmin = profile && ["super_admin", "admin", "operator", "finance"].includes(profile.role);
 
       if (isAdmin) {
-        // Admin: redirect away from login page to dashboard
         if (pathname === "/admin/login") {
           const url = request.nextUrl.clone();
           url.pathname = "/admin";
           return NextResponse.redirect(url);
         }
       } else {
-        // Non-admin (customer): redirect away from any admin page (including login) to homepage
         const url = request.nextUrl.clone();
         url.pathname = "/";
         return NextResponse.redirect(url);
@@ -75,13 +69,6 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    /*
-     * Match all request paths except for the ones starting with:
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
-     * - images/assets/icons (media assets)
-     */
     "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };

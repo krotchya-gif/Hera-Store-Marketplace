@@ -4,10 +4,9 @@ import { useState, useEffect, useTransition } from "react";
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
-import { formatRp } from "@/utils/mockData";
+import { formatRp } from "@/utils/format";
 import { createClient } from "@/utils/supabase/client";
-import {
-  Trash2,
+import { Trash2,
   Plus,
   Minus,
   Tag,
@@ -16,6 +15,7 @@ import {
   Truck,
   Shield,
 } from "lucide-react";
+import { useToast } from "@/components/Toast";
 
 interface LocalCartItem {
   id: string;
@@ -30,6 +30,7 @@ interface LocalCartItem {
 }
 
 export default function KeranjangPage() {
+  const { toast } = useToast();
   const [cartItems, setCartItems] = useState<LocalCartItem[]>([]);
   const [checkedItems, setCheckedItems] = useState<string[]>([]);
   const [voucherCode, setVoucherCode] = useState("");
@@ -170,7 +171,7 @@ export default function KeranjangPage() {
 
   const handleCheckout = () => {
     if (selectedItems.length === 0) {
-      alert("Pilih minimal satu produk untuk melanjutkan checkout.");
+      toast("error", "Pilih minimal satu produk sebelum checkout");
       return;
     }
     localStorage.setItem("hera_checkout_items", JSON.stringify(selectedItems));

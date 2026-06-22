@@ -10,7 +10,7 @@ import {
   STORE_ADDRESS
 } from "@/utils/storeConfig";
 
-const tabs = ["Informasi Toko", "Pengiriman", "Pembayaran", "Notifikasi", "Admin & Hak Akses", "SEO"];
+const tabs = ["Informasi Toko", "Pengiriman", "Pembayaran", "Notifikasi", "Admin & Hak Akses", "SEO", "Halaman Statis"];
 
 const couriers = ["JNE", "J&T Express", "SiCepat", "Gosend", "Anteraja"];
 const paymentMethods = ["Transfer Bank (BCA, Mandiri, BRI)", "GoPay", "OVO", "Dana", "ShopeePay", "Virtual Account", "COD (Bayar di Tempat)"];
@@ -60,6 +60,7 @@ export default function SettingsPage() {
   const [igUrl, setIgUrl] = useState("");
   const [ttUrl, setTtUrl] = useState("");
   const [fbUrl, setFbUrl] = useState("");
+  const [waNumber, setWaNumber] = useState("6281234567890");
 
   // --- States for Shipping ---
   const [courierToggles, setCourierToggles] = useState<Record<string, boolean>>(
@@ -100,8 +101,22 @@ export default function SettingsPage() {
   const [seoDefaultKeywords, setSeoDefaultKeywords] = useState("");
   const [seoRobotsTxt, setSeoRobotsTxt] = useState("");
   const [seoSitemapXml, setSeoSitemapXml] = useState("");
-  const [seoRobotsFile, setSeoRobotsFile] = useState<string | null>(null);
-  const [seoSitemapFile, setSeoSitemapFile] = useState<string | null>(null);
+
+  // --- States for Static Pages ---
+  const [pageTentangKami, setPageTentangKami] = useState("");
+  const [pageTentangVisi, setPageTentangVisi] = useState("");
+  const [pageTentangMisi, setPageTentangMisi] = useState("");
+  const [karirJobs, setKarirJobs] = useState<{ title: string; type: string; location: string }[]>([]);
+  const [karirContent, setKarirContent] = useState("");
+  const [blogArticles, setBlogArticles] = useState<{ slug: string; title: string; excerpt: string; emoji: string }[]>([]);
+
+  // --- States for Hubungi Kami ---
+  const [contactEmail, setContactEmail] = useState("");
+  const [contactPhone, setContactPhone] = useState("");
+  const [contactAddress, setContactAddress] = useState("");
+  const [contactResponseTime, setContactResponseTime] = useState("");
+  const [contactOperationalHours, setContactOperationalHours] = useState("");
+  const [contactGmapsCoords, setContactGmapsCoords] = useState("");
 
   const fetchSettings = async () => {
     try {
@@ -135,6 +150,7 @@ export default function SettingsPage() {
           setTtUrl(settings.store_info.social_media.tiktok || "");
           setFbUrl(settings.store_info.social_media.facebook || "");
         }
+      if (settings.whatsapp_number) setWaNumber(settings.whatsapp_number as string);
       }
 
       // Load shipping settings
@@ -180,6 +196,28 @@ export default function SettingsPage() {
         setSeoDefaultKeywords(settings.seo.default_keywords || "");
         setSeoRobotsTxt(settings.seo.robots_txt_content || "");
         setSeoSitemapXml(settings.seo.sitemap_xml_content || "");
+      }
+
+      // Load static page content
+      if (settings.page_tentang_kami) {
+        setPageTentangKami(settings.page_tentang_kami.content || "");
+        setPageTentangVisi(settings.page_tentang_kami.visi || "");
+        setPageTentangMisi(settings.page_tentang_kami.misi || "");
+      }
+      if (settings.page_karir) {
+        setKarirJobs(settings.page_karir.jobs || []);
+        setKarirContent(settings.page_karir.content || "");
+      }
+      if (settings.page_blog) {
+        setBlogArticles(settings.page_blog.articles || []);
+      }
+      if (settings.page_hubungi_kami) {
+        setContactEmail(settings.page_hubungi_kami.email || "");
+        setContactPhone(settings.page_hubungi_kami.phone || "");
+        setContactAddress(settings.page_hubungi_kami.address || "");
+        setContactResponseTime(settings.page_hubungi_kami.response_time || "");
+        setContactOperationalHours(settings.page_hubungi_kami.operational_hours || "");
+        setContactGmapsCoords(settings.page_hubungi_kami.gmaps_coords || "");
       }
     } catch (err) {
       console.error("[fetchSettings]", err);
@@ -227,6 +265,12 @@ export default function SettingsPage() {
         const errorJson = await res.json();
         throw new Error(errorJson.error || "Gagal menyimpan informasi toko");
       }
+      // Save WhatsApp number separately
+      await fetch("/api/admin/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: "whatsapp_number", value: waNumber })
+      });
       alert("Informasi toko berhasil disimpan!");
     } catch (err) {
       alert(err instanceof Error ? err.message : String(err));
@@ -400,6 +444,93 @@ export default function SettingsPage() {
     }
   };
 
+  const savePageTentangKami = async () => {
+    try {
+      setSaving(true);
+      const res = await fetch("/api/admin/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          key: "page_tentang_kami",
+          value: { content: pageTentangKami, visi: pageTentangVisi, misi: pageTentangMisi }
+        })
+      });
+      if (!res.ok) throw new Error("Gagal menyimpan");
+      alert("Halaman Tentang Kami berhasil disimpan!");
+    } catch (err) {
+      alert(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const savePageKarir = async () => {
+    try {
+      setSaving(true);
+      const res = await fetch("/api/admin/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          key: "page_karir",
+          value: { jobs: karirJobs, content: karirContent }
+        })
+      });
+      if (!res.ok) throw new Error("Gagal menyimpan");
+      alert("Halaman Karir berhasil disimpan!");
+    } catch (err) {
+      alert(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const savePageHubungiKami = async () => {
+    try {
+      setSaving(true);
+      const res = await fetch("/api/admin/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          key: "page_hubungi_kami",
+          value: {
+            email: contactEmail,
+            phone: contactPhone,
+            address: contactAddress,
+            response_time: contactResponseTime,
+            operational_hours: contactOperationalHours,
+            gmaps_coords: contactGmapsCoords,
+          }
+        })
+      });
+      if (!res.ok) throw new Error("Gagal menyimpan");
+      alert("Halaman Hubungi Kami berhasil disimpan!");
+    } catch (err) {
+      alert(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const savePageBlog = async () => {
+    try {
+      setSaving(true);
+      const res = await fetch("/api/admin/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          key: "page_blog",
+          value: { articles: blogArticles }
+        })
+      });
+      if (!res.ok) throw new Error("Gagal menyimpan");
+      alert("Halaman Blog berhasil disimpan!");
+    } catch (err) {
+      alert(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const getRoleLabel = (role: string) => {
     switch (role) {
       case "super_admin": return "Super Admin";
@@ -489,16 +620,12 @@ export default function SettingsPage() {
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1.5">Kota/Provinsi</label>
-              <select 
-                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-green-400 bg-white"
+              <input 
+                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-green-400"
                 value={storeCity}
                 onChange={(e) => setStoreCity(e.target.value)}
-              >
-                <option>Jakarta Selatan</option>
-                <option>Jakarta Pusat</option>
-                <option>Bandung</option>
-                <option>Surabaya</option>
-              </select>
+                placeholder="Misal: Jakarta Selatan"
+              />
             </div>
             <div className="md:col-span-2">
               <label className="block text-xs font-medium text-gray-600 mb-1.5">Deskripsi Toko</label>
@@ -581,6 +708,16 @@ export default function SettingsPage() {
                 </div>
               </div>
             </div>
+            <div className="mt-4 pt-4 border-t border-gray-100">
+              <label className="block text-xs font-medium text-gray-600 mb-1.5">No. WhatsApp (tombol mengambang)</label>
+              <input 
+                className="w-full max-w-xs border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-green-400 font-mono" 
+                placeholder="6281234567890" 
+                value={waNumber}
+                onChange={(e) => setWaNumber(e.target.value)}
+              />
+              <p className="text-[10px] text-gray-400 mt-1">Format: kode negara + nomor, tanpa + atau spasi. Contoh: 6281234567890</p>
+            </div>
           </div>
           <div className="mt-6 flex justify-end">
             <button 
@@ -631,16 +768,12 @@ export default function SettingsPage() {
           </div>
           <div className="border-t border-gray-100 pt-5">
             <h3 className="font-semibold text-gray-800 mb-3 text-sm">Lokasi Asal Pengiriman</h3>
-            <select 
-              className="border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-green-400 bg-white"
+            <input 
+              className="w-full max-w-xs border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-green-400"
               value={originCity}
               onChange={(e) => setOriginCity(e.target.value)}
-            >
-              <option>Jakarta Selatan</option>
-              <option>Jakarta Pusat</option>
-              <option>Bandung</option>
-              <option>Surabaya</option>
-            </select>
+              placeholder="Misal: Jakarta Selatan"
+            />
           </div>
           <div className="flex justify-end">
             <button 
@@ -962,18 +1095,17 @@ export default function SettingsPage() {
                       reader.onload = (ev) => {
                         const content = ev.target?.result as string;
                         setSeoRobotsTxt(content);
-                        setSeoRobotsFile(file.name);
                       };
                       reader.readAsText(file);
                     }}
                   />
                 </label>
-                {seoRobotsFile && (
-                  <span className="text-xs text-green-600 font-medium">{seoRobotsFile} ✓</span>
+                {seoRobotsTxt && (
+                  <span className="text-xs text-green-600 font-medium">✓ File berhasil dimuat</span>
                 )}
-                {(seoRobotsTxt || seoRobotsFile) && (
+                {seoRobotsTxt && (
                   <button
-                    onClick={() => { setSeoRobotsTxt(""); setSeoRobotsFile(null); }}
+                    onClick={() => { setSeoRobotsTxt(""); }}
                     className="text-xs text-red-500 hover:text-red-600 font-medium"
                   >
                     Hapus
@@ -1017,18 +1149,17 @@ Sitemap: ${typeof window !== "undefined" ? window.location.origin : "https://her
                       reader.onload = (ev) => {
                         const content = ev.target?.result as string;
                         setSeoSitemapXml(content);
-                        setSeoSitemapFile(file.name);
                       };
                       reader.readAsText(file);
                     }}
                   />
                 </label>
-                {seoSitemapFile && (
-                  <span className="text-xs text-green-600 font-medium">{seoSitemapFile} ✓</span>
+                {seoSitemapXml && (
+                  <span className="text-xs text-green-600 font-medium">✓ File berhasil dimuat</span>
                 )}
-                {(seoSitemapXml || seoSitemapFile) && (
+                {seoSitemapXml && (
                   <button
-                    onClick={() => { setSeoSitemapXml(""); setSeoSitemapFile(null); }}
+                    onClick={() => { setSeoSitemapXml(""); }}
                     className="text-xs text-red-500 hover:text-red-600 font-medium"
                   >
                     Hapus
@@ -1065,6 +1196,195 @@ Sitemap: ${typeof window !== "undefined" ? window.location.origin : "https://her
             >
               Simpan Pengaturan SEO
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 7: Halaman Statis */}
+      {activeTab === "Halaman Statis" && (
+        <div className="space-y-6">
+          {/* Tentang Kami */}
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+            <h3 className="font-semibold text-gray-800 mb-4 text-sm">Halaman Tentang Kami</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1.5">Konten Utama</label>
+                <textarea rows={4} className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-green-400 resize-none"
+                  value={pageTentangKami} onChange={(e) => setPageTentangKami(e.target.value)}
+                  placeholder="Deskripsi tentang toko Anda..." />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1.5">Visi</label>
+                <textarea rows={3} className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-green-400 resize-none"
+                  value={pageTentangVisi} onChange={(e) => setPageTentangVisi(e.target.value)}
+                  placeholder="Visi perusahaan..." />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1.5">Misi (setiap baris = 1 item)</label>
+                <textarea rows={4} className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-green-400 resize-none"
+                  value={pageTentangMisi} onChange={(e) => setPageTentangMisi(e.target.value)}
+                  placeholder={`Menyediakan produk berkualitas
+Memberikan pelayanan terbaik
+Mendukung produk lokal`} />
+              </div>
+            </div>
+            <div className="mt-4 flex justify-end">
+              <button onClick={savePageTentangKami} disabled={saving}
+                className="bg-green-600 hover:bg-green-700 text-white font-semibold px-6 py-2.5 rounded-xl text-sm transition-colors disabled:opacity-50">
+                Simpan Tentang Kami
+              </button>
+            </div>
+          </div>
+
+          {/* Hubungi Kami */}
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+            <h3 className="font-semibold text-gray-800 mb-4 text-sm">Halaman Hubungi Kami</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1.5">Email</label>
+                <input className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-green-400"
+                  value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} placeholder="info@herastore.com" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1.5">Telepon</label>
+                <input className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-green-400"
+                  value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} placeholder="+6281234567890" />
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-xs font-medium text-gray-600 mb-1.5">Alamat</label>
+                <textarea rows={2} className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-green-400 resize-none"
+                  value={contactAddress} onChange={(e) => setContactAddress(e.target.value)}
+                  placeholder="Jl. Industri No. 45, Jakarta Selatan" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1.5">Waktu Respon</label>
+                <input className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-green-400"
+                  value={contactResponseTime} onChange={(e) => setContactResponseTime(e.target.value)} placeholder="1x24 jam" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1.5">Jam Operasional</label>
+                <input className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-green-400"
+                  value={contactOperationalHours} onChange={(e) => setContactOperationalHours(e.target.value)}
+                  placeholder="Senin - Jumat, 08:00 - 21:00 WIB" />
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-xs font-medium text-gray-600 mb-1.5">Koordinat Google Maps</label>
+                <input className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-green-400 font-mono"
+                  value={contactGmapsCoords} onChange={(e) => setContactGmapsCoords(e.target.value)}
+                  placeholder="-6.227341, 106.808277  (biarkan kosong jika pakai alamat)" />
+                <p className="text-[10px] text-gray-400 mt-1">
+                  Isi dengan koordinat latitude,longitude untuk menampilkan Google Maps. Contoh: -6.227341, 106.808277
+                </p>
+              </div>
+            </div>
+            <div className="mt-4 flex justify-end">
+              <button onClick={savePageHubungiKami} disabled={saving}
+                className="bg-green-600 hover:bg-green-700 text-white font-semibold px-6 py-2.5 rounded-xl text-sm transition-colors disabled:opacity-50">
+                Simpan Hubungi Kami
+              </button>
+            </div>
+          </div>
+
+          {/* Karir */}
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-gray-800 text-sm">Halaman Karir — Lowongan</h3>
+              <button onClick={() => setKarirJobs([...karirJobs, { title: "", type: "Full-time", location: "" }])}
+                className="flex items-center gap-1.5 text-xs font-semibold text-green-600 hover:text-green-700">
+                <Plus className="w-3.5 h-3.5" /> Tambah Lowongan
+              </button>
+            </div>
+            <div className="space-y-3 mb-4">
+              {karirJobs.map((job, i) => (
+                <div key={i} className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
+                  <input className="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-green-400"
+                    value={job.title} onChange={(e) => {
+                      const updated = [...karirJobs];
+                      updated[i] = { ...updated[i], title: e.target.value };
+                      setKarirJobs(updated);
+                    }} placeholder="Nama posisi" />
+                  <select className="border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white focus:outline-none focus:border-green-400"
+                    value={job.type} onChange={(e) => {
+                      const updated = [...karirJobs];
+                      updated[i] = { ...updated[i], type: e.target.value };
+                      setKarirJobs(updated);
+                    }}>
+                    <option>Full-time</option><option>Part-time</option><option>Contract</option><option>Internship</option>
+                  </select>
+                  <input className="w-32 border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-green-400"
+                    value={job.location} onChange={(e) => {
+                      const updated = [...karirJobs];
+                      updated[i] = { ...updated[i], location: e.target.value };
+                      setKarirJobs(updated);
+                    }} placeholder="Lokasi" />
+                  <button onClick={() => setKarirJobs(karirJobs.filter((_, j) => j !== i))}
+                    className="text-red-400 hover:text-red-600 text-xs font-semibold shrink-0">Hapus</button>
+                </div>
+              ))}
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1.5">Konten Tambahan</label>
+              <textarea rows={3} className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-green-400 resize-none"
+                value={karirContent} onChange={(e) => setKarirContent(e.target.value)}
+                placeholder="Informasi tambahan tentang karir di perusahaan Anda..." />
+            </div>
+            <div className="mt-4 flex justify-end">
+              <button onClick={savePageKarir} disabled={saving}
+                className="bg-green-600 hover:bg-green-700 text-white font-semibold px-6 py-2.5 rounded-xl text-sm transition-colors disabled:opacity-50">
+                Simpan Karir
+              </button>
+            </div>
+          </div>
+
+          {/* Blog */}
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-gray-800 text-sm">Halaman Blog — Artikel</h3>
+              <button onClick={() => setBlogArticles([...blogArticles, { slug: "", title: "", excerpt: "", emoji: "📝" }])}
+                className="flex items-center gap-1.5 text-xs font-semibold text-green-600 hover:text-green-700">
+                <Plus className="w-3.5 h-3.5" /> Tambah Artikel
+              </button>
+            </div>
+            <div className="space-y-3">
+              {blogArticles.map((article, i) => (
+                <div key={i} className="p-3 bg-gray-50 rounded-xl space-y-2">
+                  <div className="flex items-center gap-2">
+                    <input className="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-green-400"
+                      value={article.slug} onChange={(e) => {
+                        const updated = [...blogArticles];
+                        updated[i] = { ...updated[i], slug: e.target.value };
+                        setBlogArticles(updated);
+                      }} placeholder="Slug (contoh: tips-belajar)" />
+                    <input className="w-16 border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-green-400 text-center"
+                      value={article.emoji} onChange={(e) => {
+                        const updated = [...blogArticles];
+                        updated[i] = { ...updated[i], emoji: e.target.value };
+                        setBlogArticles(updated);
+                      }} placeholder="📝" />
+                    <button onClick={() => setBlogArticles(blogArticles.filter((_, j) => j !== i))}
+                      className="text-red-400 hover:text-red-600 text-xs font-semibold shrink-0">Hapus</button>
+                  </div>
+                  <input className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-green-400"
+                    value={article.title} onChange={(e) => {
+                      const updated = [...blogArticles];
+                      updated[i] = { ...updated[i], title: e.target.value };
+                      setBlogArticles(updated);
+                    }} placeholder="Judul artikel" />
+                  <textarea rows={2} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-green-400 resize-none"
+                    value={article.excerpt} onChange={(e) => {
+                      const updated = [...blogArticles];
+                      updated[i] = { ...updated[i], excerpt: e.target.value };
+                      setBlogArticles(updated);
+                    }} placeholder="Ringkasan artikel..." />
+                </div>
+              ))}
+            </div>
+            <div className="mt-4 flex justify-end">
+              <button onClick={savePageBlog} disabled={saving}
+                className="bg-green-600 hover:bg-green-700 text-white font-semibold px-6 py-2.5 rounded-xl text-sm transition-colors disabled:opacity-50">
+                Simpan Blog
+              </button>
+            </div>
           </div>
         </div>
       )}

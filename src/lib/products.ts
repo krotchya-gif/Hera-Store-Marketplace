@@ -2,11 +2,6 @@
 import { createClient } from "@/utils/supabase/server";
 import type { Product, Category, Review, ProductFilters, PaginatedResult } from "@/types/database";
 
-export const getDiscountPercent = (price: number, discountPrice: number | null) => {
-  if (!discountPrice || discountPrice >= price) return null;
-  return Math.round(((price - discountPrice) / price) * 100);
-};
-
 // ─── Batch Rating & Sold Helper ────────────────────────────────
 // Returns a map of productId -> { average, count, sold }
 export async function getProductStatsMap(productIds: string[]): Promise<Record<string, { average: number; count: number; sold: number }>> {

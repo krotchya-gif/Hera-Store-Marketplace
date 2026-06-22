@@ -43,12 +43,19 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     : 0;
 
   // Products sold (filtered by this month for dashboard relevance)
-  const [{ data: thisItems }, { data: lastItems }] = await Promise.all([
-    supabase.from("order_items").select("qty, created_at").gte("created_at", thisMonthStart),
-    supabase.from("order_items").select("qty, created_at").gte("created_at", lastMonthStart).lte("created_at", lastMonthEnd),
+  // Note: order_items doesn't have created_at, so we join through orders
+  const [{ data: thisMonthOrdersForItems }, { data: lastMonthOrdersForItems }] = await Promise.all([
+    supabase.from("orders").select("order_items(qty)").gte("created_at", thisMonthStart),
+    supabase.from("orders").select("order_items(qty)").gte("created_at", lastMonthStart).lte("created_at", lastMonthEnd),
   ]);
-  const thisProductsSold = thisItems?.reduce((s, i) => s + (i.qty ?? 0), 0) ?? 0;
-  const lastProductsSold = lastItems?.reduce((s, i) => s + (i.qty ?? 0), 0) ?? 0;
+  const thisProductsSold = thisMonthOrdersForItems?.reduce((sum, o) => {
+    const items = (o as unknown as { order_items?: { qty: number }[] })?.order_items ?? [];
+    return sum + items.reduce((s, i) => s + (i.qty ?? 0), 0);
+  }, 0) ?? 0;
+  const lastProductsSold = lastMonthOrdersForItems?.reduce((sum, o) => {
+    const items = (o as unknown as { order_items?: { qty: number }[] })?.order_items ?? [];
+    return sum + items.reduce((s, i) => s + (i.qty ?? 0), 0);
+  }, 0) ?? 0;
   const productsSoldChange = lastProductsSold > 0 ? Math.round(((thisProductsSold - lastProductsSold) / lastProductsSold) * 100) : 0;
 
   // Recent orders
@@ -60,10 +67,13 @@ export async function getDashboardStats(): Promise<DashboardStats> {
 
   // Top products (filtered by last 3 months for performance)
   const threeMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 3, 1).toISOString();
-  const { data: topProductsRaw } = await supabase
-    .from("order_items")
-    .select("product_name, qty, subtotal")
+  const { data: topOrdersRaw } = await supabase
+    .from("orders")
+    .select("order_items(product_name, qty, subtotal)")
     .gte("created_at", threeMonthsAgo);
+  const topProductsRaw = topOrdersRaw?.flatMap((o) =>
+    (o as unknown as { order_items?: { product_name: string; qty: number; subtotal: number }[] })?.order_items ?? []
+  ) ?? [];
 
   const productMap: Record<string, { total_qty: number; total_revenue: number }> = {};
   for (const item of topProductsRaw ?? []) {
@@ -96,10 +106,13 @@ export async function getDashboardStats(): Promise<DashboardStats> {
   const salesChart = Object.entries(salesByDate).map(([date, total]) => ({ date, total }));
 
   // Category chart (filtered by this month)
-  const { data: catChartData } = await supabase
-    .from("order_items")
-    .select(`subtotal, products(categories(name))`)
+  const { data: catOrdersRaw } = await supabase
+    .from("orders")
+    .select("order_items(subtotal, products!inner(categories!inner(name)))")
     .gte("created_at", thisMonthStart);
+  const catChartData = catOrdersRaw?.flatMap((o) =>
+    (o as unknown as { order_items?: { subtotal: number; products?: { categories?: { name: string } } }[] })?.order_items ?? []
+  ) ?? [];
 
   const catMap: Record<string, number> = {};
   for (const item of catChartData ?? []) {
@@ -163,7 +176,14 @@ export async function getAllProductsAdmin(filters: { search?: string; categoryId
 
 export async function createProduct(payload: Partial<Product> & { images?: string[] }): Promise<Product | null> {
   const supabase = await createClient();
-  const { images, ...productData } = payload;
+  const { images, ...rest } = payload;
+  const productAllowed = ["name", "sku", "description", "category_id", "brand", "price", "discount_price", "stock", "unit", "weight_gram", "dimension_p", "dimension_l", "dimension_t", "meta_title", "meta_description", "slug", "is_active"];
+  const productData: Record<string, unknown> = {};
+  for (const k of productAllowed) {
+    if ((rest as Record<string, unknown>)[k] !== undefined) {
+      productData[k] = (rest as Record<string, unknown>)[k];
+    }
+  }
   const { data, error } = await supabase.from("products").insert(productData).select().single();
   if (error || !data) { console.error("[createProduct]", error); return null; }
 
@@ -185,7 +205,14 @@ export async function createProduct(payload: Partial<Product> & { images?: strin
 
 export async function updateProduct(id: string, payload: Partial<Product>): Promise<boolean> {
   const supabase = await createClient();
-  const { error } = await supabase.from("products").update({ ...payload, updated_at: new Date().toISOString() }).eq("id", id);
+  const allowed = ["name", "description", "category_id", "brand", "price", "discount_price", "stock", "unit", "weight_gram", "dimension_p", "dimension_l", "dimension_t", "meta_title", "meta_description", "slug", "is_active"];
+  const sanitized: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  for (const k of allowed) {
+    if ((payload as Record<string, unknown>)[k] !== undefined) {
+      sanitized[k] = (payload as Record<string, unknown>)[k];
+    }
+  }
+  const { error } = await supabase.from("products").update(sanitized).eq("id", id);
   if (error) { console.error("[updateProduct]", error); return false; }
   return true;
 }
@@ -292,7 +319,14 @@ export async function getAllVouchers(): Promise<Voucher[]> {
 
 export async function createVoucher(payload: Partial<Voucher>): Promise<Voucher | null> {
   const supabase = await createClient();
-  const { data, error } = await supabase.from("vouchers").insert(payload).select().single();
+  const allowed = ["code", "type", "value", "min_purchase", "quota", "per_user_limit", "starts_at", "ends_at", "is_active"];
+  const voucherData: Record<string, unknown> = {};
+  for (const k of allowed) {
+    if ((payload as Record<string, unknown>)[k] !== undefined) {
+      voucherData[k] = (payload as Record<string, unknown>)[k];
+    }
+  }
+  const { data, error } = await supabase.from("vouchers").insert(voucherData).select().single();
   if (error) { console.error("[createVoucher]", error); return null; }
   return data as Voucher;
 }
@@ -329,14 +363,28 @@ export async function getAllCategoriesAdmin(): Promise<(Category & { product_cou
 
 export async function createCategory(payload: Partial<Category>): Promise<Category | null> {
   const supabase = await createClient();
-  const { data, error } = await supabase.from("categories").insert(payload).select().single();
+  const allowed = ["name", "slug", "icon", "parent_id", "sort_order", "is_active"];
+  const categoryData: Record<string, unknown> = {};
+  for (const k of allowed) {
+    if ((payload as Record<string, unknown>)[k] !== undefined) {
+      categoryData[k] = (payload as Record<string, unknown>)[k];
+    }
+  }
+  const { data, error } = await supabase.from("categories").insert(categoryData).select().single();
   if (error) { console.error("[createCategory]", error); return null; }
   return data as Category;
 }
 
 export async function updateCategory(id: string, payload: Partial<Category>): Promise<boolean> {
   const supabase = await createClient();
-  const { error } = await supabase.from("categories").update(payload).eq("id", id);
+  const allowed = ["name", "slug", "icon", "parent_id", "sort_order", "is_active"];
+  const sanitized: Record<string, unknown> = {};
+  for (const k of allowed) {
+    if ((payload as Record<string, unknown>)[k] !== undefined) {
+      sanitized[k] = (payload as Record<string, unknown>)[k];
+    }
+  }
+  const { error } = await supabase.from("categories").update(sanitized).eq("id", id);
   if (error) { console.error("[updateCategory]", error); return false; }
   return true;
 }

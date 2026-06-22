@@ -297,7 +297,7 @@ export default function OrdersPage() {
     try {
       const params = new URLSearchParams({
         page: currentPage.toString(),
-        pageSize: "10",
+        pageSize: Math.min(10, 100).toString(),
         status: statusKeys[statusFilter],
         ...(search && { search }),
         ...(dateFrom && { dateFrom }),

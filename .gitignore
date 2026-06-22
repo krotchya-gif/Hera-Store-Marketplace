@@ -39,9 +39,8 @@ CLAUDE.md
 
 # Project docs (track only MIGRATE.md & README.md)
 Todo.md
-AGENT.MD.md
+AGENT.md
+doc.md
 
 # Supabase
 supabase/.temp/
-
-.vercel

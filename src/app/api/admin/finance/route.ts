@@ -1,5 +1,7 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
+import { verifyAdminRole, handleAdminError } from "@/lib/auth-utils";
+import { checkRateLimit, getRateLimitKey } from "@/lib/rate-limit";
 
 function getWeekOfMonth(date: Date): number {
   const startOfMonth = new Date(date.getFullYear(), date.getMonth(), 1);
@@ -8,45 +10,68 @@ function getWeekOfMonth(date: Date): number {
   return Math.floor(adjustedDate / 7);
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    // Rate limiting
+    const rlKey = getRateLimitKey(request);
+    const { allowed } = checkRateLimit(rlKey, 30, 60000);
+    if (!allowed) return NextResponse.json({ error: "Terlalu banyak permintaan. Silakan coba lagi." }, { status: 429 });
+
     const supabase = await createClient();
 
-    // Verify session & role
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    // Verify admin role via helper
+    await verifyAdminRole();
+
+    // ─── Pagination: month/year query params ────────────────────────────
+    const { searchParams } = new URL(request.url);
+    const now = new Date();
+
+    // Default: last 12 months
+    let year = parseInt(searchParams.get("year") || String(now.getFullYear()));
+    let month = parseInt(searchParams.get("month") || "0"); // 0 = all months in the year
+
+    if (isNaN(year)) year = now.getFullYear();
+    if (isNaN(month)) month = 0;
+
+    // Build date range
+    let dateFrom: string, dateTo: string;
+    if (month > 0 && month <= 12) {
+      // Specific month
+      const startDate = new Date(year, month - 1, 1);
+      const endDate = new Date(year, month, 0, 23, 59, 59);
+      dateFrom = startDate.toISOString().split("T")[0];
+      dateTo = endDate.toISOString().split("T")[0];
+    } else {
+      // Whole year — limit to 1 year back from now (or specified year)
+      const startDate = new Date(year, 0, 1);
+      const endDate = new Date(year, 11, 31, 23, 59, 59);
+      dateFrom = startDate.toISOString().split("T")[0];
+      dateTo = endDate.toISOString().split("T")[0];
     }
 
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single();
-
-    if (!profile || profile.role === "customer") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
-
-    // Fetch all orders
-    const { data: orders, error } = await supabase
+    // ─── Fetch orders in range ─────────────────────────────────────────
+    const query = supabase
       .from("orders")
       .select("*")
+      .gte("created_at", dateFrom)
+      .lte("created_at", dateTo)
       .order("created_at", { ascending: false });
 
+    const { data: orders, error } = await query;
+
     if (error || !orders) {
-      console.error("[Finance API] Query error:", error?.message || "Unknown error");
-      return NextResponse.json({ error: error?.message || "Gagal memuat data pesanan" }, { status: 400 });
+      console.error("[Finance API] Query error:", error);
+      return NextResponse.json({ error: "Gagal memuat data pesanan" }, { status: 400 });
     }
 
-    // Calculate total stats
+    // ─── Calculate total stats ──────────────────────────────────────────
     const paidOrders = orders.filter(o => o.payment_status === "lunas");
     const totalRevenue = paidOrders.reduce((sum, o) => sum + (Number(o.total) || 0), 0);
     const totalOrders = paidOrders.length;
     const avgOrderValue = totalOrders > 0 ? Math.round(totalRevenue / totalOrders) : 0;
     const totalDiscount = orders.reduce((sum, o) => sum + (Number(o.discount) || 0), 0);
 
-    // Calculate daily data (last 7 days)
+    // ─── Daily data (last 7 days in range) ─────────────────────────────
     const days = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
     const dailyData = Array.from({ length: 7 }).map((_, i) => {
       const d = new Date();
@@ -56,7 +81,7 @@ export async function GET() {
 
       const dayOrders = paidOrders.filter(o => o.created_at.startsWith(dateString));
       const revenue = dayOrders.reduce((sum, o) => sum + (Number(o.total) || 0), 0);
-      
+
       return {
         day: dayName,
         pendapatan: revenue,
@@ -64,10 +89,10 @@ export async function GET() {
       };
     });
 
-    // Monthly comparison (current month weeks vs previous month weeks)
-    const now = new Date();
-    const thisYear = now.getFullYear();
-    const thisMonth = now.getMonth();
+    // ─── Monthly comparison (current month weeks vs previous month weeks) ──
+    const selectedDate = month > 0 ? new Date(year, month - 1) : now;
+    const thisYear = selectedDate.getFullYear();
+    const thisMonth = selectedDate.getMonth();
     const lastMonth = thisMonth === 0 ? 11 : thisMonth - 1;
     const lastMonthYear = thisMonth === 0 ? thisYear - 1 : thisYear;
 
@@ -90,7 +115,7 @@ export async function GET() {
       };
     });
 
-    // Payment method distribution
+    // ─── Payment method distribution ────────────────────────────────────
     const payMap: Record<string, number> = {};
     orders.forEach(o => {
       if (o.payment_method) {
@@ -112,7 +137,7 @@ export async function GET() {
       };
     });
 
-    // Transactions list
+    // ─── Transactions list (latest 10 in range) ────────────────────────
     const transactions = orders.slice(0, 10).map(o => {
       const shippingAddr = o.shipping_address as { name?: string } | null;
       return {
@@ -136,6 +161,15 @@ export async function GET() {
       monthCompare,
       paymentData,
       transactions,
+      // Metadata for pagination
+      meta: {
+        year,
+        month,
+        dateFrom,
+        dateTo,
+        totalOrdersInRange: orders.length,
+        paidOrdersInRange: paidOrders.length,
+      },
     });
   } catch (error) {
     console.error("[API GET Finance]", error);

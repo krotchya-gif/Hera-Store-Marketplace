@@ -17,14 +17,6 @@ export const getStoreDomain = () => {
   return STORE_EMAIL.split("@")[1] || "herastore.com";
 };
 
-// Format email otomatis dengan domain toko
-export const getFormattedEmail = (email?: string) => {
-  if (!email) {
-    return STORE_EMAIL;
-  }
-  return email;
-};
-
 // Format admin email berdasarkan nama toko
 export const getAdminEmail = (username: string) => {
   return `${username}@${getStoreDomain()}`;

@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useEffect, useCallback, useTransition } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { categories as mockCategoriesMetadata } from "@/utils/mockData";
 import { getProductEmoji } from "@/components/HomeClient";
 import { createClient } from "@/utils/supabase/client";
+import { addToCart, getWishlist, toggleWishlist } from "@/lib/cart-utils";
 import {
   ChevronRight,
   Heart,
@@ -21,31 +22,11 @@ const sortOptions = [
   { value: "price_desc", label: "Harga: Tinggi ke Rendah" },
 ];
 
-interface CartItem {
-  id: string;
-  name: string;
-  price: number;
-  originalPrice: number | null;
-  quantity: number;
-  emoji: string | null;
-  variant: unknown;
-  stock: number;
-  slug: string | null;
-}
 
 function ProductCard({ product }: { product: Product }) {
   const [wished, setWished] = useState<boolean>(() => {
     if (typeof window === "undefined") return false;
-    try {
-      const wishStr = localStorage.getItem("hera_wishlist");
-      if (wishStr) {
-        const wish = JSON.parse(wishStr);
-        return Array.isArray(wish) && wish.includes(product.id);
-      }
-    } catch (e) {
-      console.error(e);
-    }
-    return false;
+    return getWishlist().includes(product.id);
   });
   const [added, setAdded] = useState(false);
 
@@ -66,28 +47,18 @@ function ProductCard({ product }: { product: Product }) {
         return;
       }
 
-      const cartStr = localStorage.getItem("hera_cart");
-      let cart: CartItem[] = cartStr ? JSON.parse(cartStr) : [];
-      if (!Array.isArray(cart)) cart = [];
-
-      const existingIndex = cart.findIndex((item) => item.id === product.id && !item.variant);
-      if (existingIndex > -1) {
-        cart[existingIndex].quantity = Math.min(product.stock, cart[existingIndex].quantity + 1);
-      } else {
-        cart.push({
+      addToCart(
+        {
           id: product.id,
           name: product.name,
           price: product.discount_price ?? product.price,
-          originalPrice: product.discount_price ? product.price : null,
-          quantity: 1,
           emoji: emoji,
-          variant: null,
           stock: product.stock,
-          slug: product.slug,
-        });
-      }
-      localStorage.setItem("hera_cart", JSON.stringify(cart));
-      window.dispatchEvent(new Event("cart-updated"));
+          slug: product.slug ?? undefined,
+          originalPrice: product.discount_price ? product.price : null,
+        },
+        1
+      );
       setAdded(true);
       setTimeout(() => setAdded(false), 1500);
     } catch (err) {
@@ -107,20 +78,9 @@ function ProductCard({ product }: { product: Product }) {
         return;
       }
 
-      const wishStr = localStorage.getItem("hera_wishlist");
-      let wish: string[] = wishStr ? JSON.parse(wishStr) : [];
-      if (!Array.isArray(wish)) wish = [];
-
       const nextWished = !wished;
       setWished(nextWished);
-
-      if (nextWished) {
-        if (!wish.includes(product.id)) wish.push(product.id);
-      } else {
-        wish = wish.filter((id: string) => id !== product.id);
-      }
-      localStorage.setItem("hera_wishlist", JSON.stringify(wish));
-      window.dispatchEvent(new Event("wishlist-updated"));
+      toggleWishlist(product.id);
     } catch (err) {
       console.error(err);
     }
@@ -204,10 +164,8 @@ export default function CategoryClient({ category, initialResult, slug, searchQu
   const [sortBy, setSortBy] = useState("newest");
   const [priceMin, setPriceMin] = useState("");
   const [priceMax, setPriceMax] = useState("");
-  const [, setMinRating] = useState(0);
   const [showFilter, setShowFilter] = useState(false);
   const [page, setPage] = useState(1);
-  const [, startTransition] = useTransition();
 
   const fetchFilteredProducts = useCallback(async () => {
     try {
@@ -236,9 +194,7 @@ export default function CategoryClient({ category, initialResult, slug, searchQu
   }, [selectedSub, slug, sortBy, page, priceMin, priceMax, searchTerm]);
 
   useEffect(() => {
-    startTransition(() => {
-      fetchFilteredProducts();
-    });
+    fetchFilteredProducts();
   }, [fetchFilteredProducts]);
 
   return (
@@ -336,7 +292,7 @@ export default function CategoryClient({ category, initialResult, slug, searchQu
               </div>
 
               <button
-                onClick={() => { setPriceMin(""); setPriceMax(""); setMinRating(0); setSortBy("newest"); setPage(1); }}
+                onClick={() => { setPriceMin(""); setPriceMax(""); setSortBy("newest"); setPage(1); }}
                 className="w-full text-sm text-gray-500 hover:text-red-500 transition-colors text-center"
               >
                 Reset Filter
@@ -466,7 +422,7 @@ export default function CategoryClient({ category, initialResult, slug, searchQu
                 Terapkan Filter
               </button>
               <button
-                onClick={() => { setPriceMin(""); setPriceMax(""); setMinRating(0); setSortBy("newest"); setShowFilter(false); setPage(1); }}
+                onClick={() => { setPriceMin(""); setPriceMax(""); setSortBy("newest"); setShowFilter(false); setPage(1); }}
                 className="w-full text-sm text-gray-500 hover:text-red-500 text-center"
               >
                 Reset Filter

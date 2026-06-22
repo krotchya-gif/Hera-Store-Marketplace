@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
+import { checkRateLimit, getRateLimitKey } from "@/lib/rate-limit";
 
-export async function PUT() {
+export async function PUT(request: NextRequest) {
   try {
+    const rlKey = getRateLimitKey(request);
+    const { allowed } = checkRateLimit(rlKey, 10, 60000);
+    if (!allowed) return NextResponse.json({ error: "Terlalu banyak permintaan. Silakan coba lagi." }, { status: 429 });
+
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {

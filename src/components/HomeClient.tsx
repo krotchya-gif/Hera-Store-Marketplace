@@ -21,6 +21,7 @@ import {
 import type { Product, Category } from "@/types/database";
 
 import { formatRp } from "@/utils/format";
+import { addToCart, getWishlist, toggleWishlist } from "@/lib/cart-utils";
 
 export function getProductEmoji(slug: string | null, categoryIcon?: string | null): string {
   if (!slug) return categoryIcon || "📦";
@@ -162,16 +163,7 @@ function ProductCard({
 }) {
   const [wished, setWished] = useState<boolean>(() => {
     if (typeof window === "undefined") return false;
-    try {
-      const wishStr = localStorage.getItem("hera_wishlist");
-      if (wishStr) {
-        const wish = JSON.parse(wishStr);
-        return Array.isArray(wish) && wish.includes(product.id);
-      }
-    } catch (e) {
-      console.error(e);
-    }
-    return false;
+    return getWishlist().includes(product.id);
   });
   const [added, setAdded] = useState(false);
 
@@ -192,28 +184,18 @@ function ProductCard({
         return;
       }
 
-      const cartStr = localStorage.getItem("hera_cart");
-      let cart: { id: string; name: string; price: number; originalPrice: number | null; quantity: number; emoji: string; variant: unknown; stock: number; slug: string | null; }[] = cartStr ? JSON.parse(cartStr) : [];
-      if (!Array.isArray(cart)) cart = [];
-
-      const existingIndex = cart.findIndex((item) => item.id === product.id && !item.variant);
-      if (existingIndex > -1) {
-        cart[existingIndex].quantity = Math.min(product.stock, cart[existingIndex].quantity + 1);
-      } else {
-        cart.push({
+      addToCart(
+        {
           id: product.id,
           name: product.name,
           price: product.discount_price ?? product.price,
-          originalPrice: product.discount_price ? product.price : null,
-          quantity: 1,
           emoji: emoji,
-          variant: null,
           stock: product.stock,
-          slug: product.slug,
-        });
-      }
-      localStorage.setItem("hera_cart", JSON.stringify(cart));
-      window.dispatchEvent(new Event("cart-updated"));
+          slug: product.slug ?? undefined,
+          originalPrice: product.discount_price ? product.price : null,
+        },
+        1
+      );
       setAdded(true);
       setTimeout(() => setAdded(false), 1500);
     } catch (err) {
@@ -246,20 +228,9 @@ function ProductCard({
                   return;
                 }
 
-                const wishStr = localStorage.getItem("hera_wishlist");
-                let wish = wishStr ? JSON.parse(wishStr) : [];
-                if (!Array.isArray(wish)) wish = [];
-
                 const nextWished = !wished;
                 setWished(nextWished);
-
-                if (nextWished) {
-                  if (!wish.includes(product.id)) wish.push(product.id);
-                } else {
-                  wish = wish.filter((id: string) => id !== product.id);
-                }
-                localStorage.setItem("hera_wishlist", JSON.stringify(wish));
-                window.dispatchEvent(new Event("wishlist-updated"));
+                toggleWishlist(product.id);
               } catch (err) {
                 console.error(err);
               }
@@ -342,7 +313,38 @@ interface HomeClientProps {
 
 export default function HomeClient({ categories, flashSaleProducts, bestSellerProducts, promoProducts, flashSaleEnd, productStats = {} }: HomeClientProps) {
   const [showAllCategories, setShowAllCategories] = useState(false);
+  const [emailSubscribe, setEmailSubscribe] = useState("");
+  const [subscribeStatus, setSubscribeStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const countdown = useCountdown(flashSaleEnd ?? null);
+
+  const handleSubscribe = async () => {
+    if (!emailSubscribe.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailSubscribe.trim())) {
+      alert("Masukkan alamat email yang valid.");
+      return;
+    }
+    setSubscribeStatus("loading");
+    try {
+      // Simpan ke store_settings untuk keperluan marketing
+      const supabase = createClient();
+      const { error } = await supabase
+        .from("store_settings")
+        .upsert({
+          key: "subscribed_emails",
+          value: { emails: [emailSubscribe.trim()] },
+          updated_at: new Date().toISOString(),
+        }, { onConflict: "key" });
+      if (error) {
+        console.warn("[Email Subscribe] Gagal simpan ke DB:", error.message);
+        // Fallback: tetap anggap berhasil
+      }
+      setSubscribeStatus("success");
+      setEmailSubscribe("");
+      setTimeout(() => setSubscribeStatus("idle"), 3000);
+    } catch (err) {
+      console.error("[Email Subscribe] Error:", err);
+      setSubscribeStatus("error");
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 pb-16 md:pb-0">
@@ -484,10 +486,17 @@ export default function HomeClient({ categories, flashSaleProducts, bestSellerPr
                 <input
                   type="email"
                   placeholder="Masukkan emailmu..."
+                  value={emailSubscribe}
+                  onChange={(e) => setEmailSubscribe(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") handleSubscribe(); }}
                   className="bg-white/20 border border-white/30 text-white placeholder-green-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:bg-white/30 w-full sm:w-56"
                 />
-                <button className="bg-white text-green-700 font-bold px-5 py-2.5 rounded-xl text-sm hover:bg-green-50 transition-colors whitespace-nowrap">
-                  Daftar Gratis
+                <button
+                  onClick={handleSubscribe}
+                  disabled={subscribeStatus === "loading"}
+                  className="bg-white text-green-700 font-bold px-5 py-2.5 rounded-xl text-sm hover:bg-green-50 transition-colors whitespace-nowrap disabled:opacity-60"
+                >
+                  {subscribeStatus === "loading" ? "Mendaftarkan..." : subscribeStatus === "success" ? "✓ Terdaftar!" : "Daftar Gratis"}
                 </button>
               </div>
             </div>

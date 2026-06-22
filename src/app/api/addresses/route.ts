@@ -1,9 +1,19 @@
 // ─── Addresses API — List & Create ─────────────────────────────
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
+import { checkRateLimit, getRateLimitKey } from "@/lib/rate-limit";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    // Rate limiting
+    const rlKey = getRateLimitKey(request);
+    const { allowed } = checkRateLimit(rlKey, 20, 60000);
+    if (!allowed) {
+      return NextResponse.json(
+        { error: "Terlalu banyak permintaan. Silakan coba lagi." },
+        { status: 429, headers: { "Retry-After": "60" } }
+      );
+    }
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
@@ -27,6 +37,16 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
+    // Rate limiting
+    const rlKey = getRateLimitKey(request);
+    const { allowed } = checkRateLimit(rlKey, 10, 60000);
+    if (!allowed) {
+      return NextResponse.json(
+        { error: "Terlalu banyak permintaan. Silakan coba lagi." },
+        { status: 429, headers: { "Retry-After": "60" } }
+      );
+    }
+
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
@@ -36,8 +56,12 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { label, name, phone, address, city, province, postal_code, is_default } = body;
 
-    if (!name || !phone || !address || !city || !province || !postal_code) {
+    if (!name?.trim() || !phone?.trim() || !address?.trim() || !city?.trim() || !province?.trim() || !postal_code?.trim()) {
       return NextResponse.json({ error: "Semua field wajib diisi" }, { status: 400 });
+    }
+
+    if (phone && !/^[0-9+\-\s]{8,15}$/.test(phone.replace(/\s/g, ''))) {
+      return NextResponse.json({ error: "Format nomor telepon tidak valid." }, { status: 400 });
     }
 
     // If setting as default, unset others first

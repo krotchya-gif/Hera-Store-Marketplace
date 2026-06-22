@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import type { Product, PaginatedResult } from "@/types/database";
 import ProductDetailClient from "@/components/ProductDetailClient";
 import { getProductBySlug, getReviewsByProduct, getProductRatingSummary, getProducts } from "@/lib/products";
 import { getSeoSettings } from "@/lib/seo";
@@ -43,11 +44,13 @@ export default async function ProdukDetailPage({ params }: PageProps) {
   const [reviews, ratingSummary, relatedProductsResult] = await Promise.all([
     getReviewsByProduct(product.id),
     getProductRatingSummary(product.id),
-    getProducts({
-      categorySlug: product.categories?.slug || undefined,
-      page: 1,
-      pageSize: 7, // fetch 7 and we filter out current product
-    }),
+    product.categories?.slug
+      ? getProducts({
+          categorySlug: product.categories.slug,
+          page: 1,
+          pageSize: 7,
+        })
+      : Promise.resolve({ data: [], count: 0, page: 1, pageSize: 0, totalPages: 0 } as PaginatedResult<Product>),
   ]);
 
   const relatedProducts = relatedProductsResult.data

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
@@ -20,7 +20,7 @@ import {
   ChevronRight,
   X,
 } from "lucide-react";
-import { STORE_NAME, getAdminEmail } from "@/utils/storeConfig";
+import { STORE_NAME } from "@/utils/storeConfig";
 
 const navItems = [
   {
@@ -58,6 +58,34 @@ interface AdminSidebarProps {
 export default function AdminSidebar({ isOpen, onClose }: AdminSidebarProps) {
   const pathname = usePathname();
   const sidebarRef = useRef<HTMLDivElement>(null);
+  const [adminName, setAdminName] = useState("Super Admin");
+  const [adminEmail, setAdminEmail] = useState("");
+
+  // Fetch real user data from Supabase
+  useEffect(() => {
+    const fetchUser = async () => {
+      try {
+        const supabase = createClient();
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          setAdminEmail(user.email ?? "");
+          const { data: profile } = await supabase
+            .from("profiles")
+            .select("name")
+            .eq("id", user.id)
+            .single();
+          if (profile?.name) {
+            setAdminName(profile.name);
+          } else {
+            setAdminName(user.email?.split("@")[0] ?? "Admin");
+          }
+        }
+      } catch (err) {
+        console.error("Gagal mengambil data user", err);
+      }
+    };
+    fetchUser();
+  }, []);
 
   // Close sidebar on route change (mobile)
   useEffect(() => {
@@ -168,10 +196,10 @@ export default function AdminSidebar({ isOpen, onClose }: AdminSidebarProps) {
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-white text-xs font-medium truncate">
-              Super Admin
+              {adminName}
             </p>
             <p className="text-gray-400 text-xs truncate">
-              {getAdminEmail("admin")}
+              {adminEmail || "Memuat..."}
             </p>
           </div>
         </div>

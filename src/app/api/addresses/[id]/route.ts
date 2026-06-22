@@ -1,12 +1,23 @@
 // ─── Addresses API — Update & Delete ───────────────────────────
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
+import { checkRateLimit, getRateLimitKey } from "@/lib/rate-limit";
 
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    // Rate limiting
+    const rlKey = getRateLimitKey(request);
+    const { allowed } = checkRateLimit(rlKey, 10, 60000);
+    if (!allowed) {
+      return NextResponse.json(
+        { error: "Terlalu banyak permintaan. Silakan coba lagi." },
+        { status: 429, headers: { "Retry-After": "60" } }
+      );
+    }
+
     const { id } = await params;
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
@@ -16,8 +27,15 @@ export async function PUT(
 
     const body = await request.json();
 
+    // Whitelist field yang diizinkan (cegah mass assignment)
+    const allowedFields = ["label", "name", "phone", "address", "city", "province", "postal_code", "is_default"];
+    const sanitizedBody: Record<string, unknown> = {};
+    for (const key of allowedFields) {
+      if (body[key] !== undefined) sanitizedBody[key] = body[key];
+    }
+
     // If setting as default, unset others first
-    if (body.is_default) {
+    if (sanitizedBody.is_default) {
       await supabase
         .from("shipping_addresses")
         .update({ is_default: false })
@@ -27,7 +45,7 @@ export async function PUT(
 
     const { error } = await supabase
       .from("shipping_addresses")
-      .update({ ...body, updated_at: new Date().toISOString() })
+      .update({ ...sanitizedBody, updated_at: new Date().toISOString() })
       .eq("id", id)
       .eq("user_id", user.id);
 
@@ -44,6 +62,16 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    // Rate limiting
+    const rlKey = getRateLimitKey(request);
+    const { allowed } = checkRateLimit(rlKey, 10, 60000);
+    if (!allowed) {
+      return NextResponse.json(
+        { error: "Terlalu banyak permintaan. Silakan coba lagi." },
+        { status: 429, headers: { "Retry-After": "60" } }
+      );
+    }
+
     const { id } = await params;
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();

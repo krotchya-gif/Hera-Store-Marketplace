@@ -65,15 +65,29 @@ export async function validateVoucher(
   };
 }
 
-export async function useVoucher(voucherId: string): Promise<boolean> {
+export async function redeemVoucher(voucherId: string): Promise<boolean> {
   const supabase = await createClient();
   // Try atomic increment via RPC
   const { error } = await supabase.rpc("increment_voucher_usage", { voucher_id: voucherId });
   if (error) {
-    console.error("[useVoucher RPC]", error);
-    // Fallback: old read-modify-write
-    const { data: current } = await supabase.from("vouchers").select("used_count").eq("id", voucherId).single();
-    await supabase.from("vouchers").update({ used_count: (current?.used_count ?? 0) + 1 }).eq("id", voucherId);
+    console.error("[redeemVoucher RPC]", error);
+    // Fallback: atomic update with quota guard + optimistic locking
+    const { data: voucher } = await supabase
+      .from("vouchers")
+      .select("used_count, quota")
+      .eq("id", voucherId)
+      .single();
+    if (!voucher) return false;
+    if (voucher.quota !== null && (voucher.used_count ?? 0) >= voucher.quota) return false;
+    const { error: updateError } = await supabase
+      .from("vouchers")
+      .update({ used_count: (voucher.used_count ?? 0) + 1 })
+      .eq("id", voucherId)
+      .eq("used_count", voucher.used_count ?? 0); // optimistic lock — prevents race
+    if (updateError) {
+      console.error("[redeemVoucher fallback update failed]", updateError);
+      return false;
+    }
   }
   return true;
 }

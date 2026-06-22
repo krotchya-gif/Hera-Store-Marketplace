@@ -1,9 +1,8 @@
 import { createClient } from "@/utils/supabase/server";
-import Link from "next/link";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
-
-const formatRp = (n: number) => `Rp ${n.toLocaleString("id-ID")}`;
+import CopyVoucherButton from "@/components/CopyVoucherButton";
+import { formatRp } from "@/utils/format";
 
 export default async function VoucherPage() {
   const supabase = await createClient();
@@ -48,15 +47,7 @@ export default async function VoucherPage() {
                           <p className="font-bold text-gray-900 text-sm">{v.code}</p>
                           <p className="text-xs text-gray-500 mt-0.5">{diskonLabel} · {minLabel}</p>
                         </div>
-                        <button
-                          onClick={async () => {
-                            "use server";
-                            // Copy code to clipboard — server action placeholder
-                          }}
-                          className="text-xs font-semibold text-green-600 border border-green-200 px-3 py-1 rounded-lg hover:bg-green-50"
-                        >
-                          Salin
-                        </button>
+                        <CopyVoucherButton code={v.code} />
                       </div>
                       <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-50">
                         <span className="text-[10px] text-gray-400">{sisa}</span>
